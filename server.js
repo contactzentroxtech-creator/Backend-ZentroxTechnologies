@@ -45,7 +45,10 @@ app.use(hpp());
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ||
+  "http://localhost:3000" ||
+  "https://zentroxtechnologies.com/",
+"https://frontend-zentroxtechnologies.netlify.app/")
   .split(",")
   .map((o) => o.trim());
 
@@ -61,7 +64,7 @@ app.use(
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Set-Cookie"],
-  }),
+  })
 );
 
 // Handle preflight for all routes
