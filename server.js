@@ -45,22 +45,22 @@ app.use(hpp());
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ||
-  "http://localhost:3000" ||
-  "https://zentroxtechnologies.com/",
-"https://frontend-zentroxtechnologies.netlify.app/")
-  .split(",")
-  .map((o) => o.trim());
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173", // Added for Vite developers just in case
+  "https://zentroxtechnologies.com",
+  "https://www.zentroxtechnologies.com",
+  "https://frontend-zentroxtechnologies.netlify.app",
+];
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow requests with no origin (curl, Postman, SSR server-side fetches)
       if (!origin) return cb(null, true);
       if (allowedOrigins.includes(origin)) return cb(null, true);
       cb(new Error(`CORS blocked: ${origin}`));
     },
-    credentials: true, // FIX: required for cookies to be sent/received
+    credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Set-Cookie"],
