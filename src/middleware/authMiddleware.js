@@ -4,6 +4,8 @@ const { User } = require("../models");
 const protect = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
+
+    console.log("AUTH HEADER:", authHeader);
     if (!authHeader?.startsWith("Bearer ")) {
       return res
         .status(401)
@@ -11,9 +13,18 @@ const protect = async (req, res, next) => {
     }
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    console.log("DECODED TOKEN:", decoded);
+
+    
     const user = await User.findById(decoded.id).select(
       "-password -refreshToken"
     );
+
+    console.log("USER FROM DB:", user);
+    console.log("USER IS ACTIVE:", user?.isActive);
+
+    
     if (!user || !user.isActive) {
       return res
         .status(401)
