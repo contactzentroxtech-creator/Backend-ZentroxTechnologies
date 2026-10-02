@@ -27,6 +27,10 @@ const uploadRoutes = require("./src/routes/upload");
 const pricingRoutes = require("./src/routes/pricing");
 const translationRoutes = require("./src/routes/translations");
 
+// ✅ NEW ROUTES
+const portfolioRoutes = require("./src/routes/portfolio");
+const reviewRoutes = require("./src/routes/reviews");
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -93,38 +97,16 @@ app.get("/health", (req, res) => {
 // ─── Sitemap ──────────────────────────────────────
 app.get("/sitemap.xml", (req, res) => {
   const baseUrl = process.env.FRONTEND_URL || "https://zentroxtechnologies.com";
+  const today = new Date().toISOString().split("T")[0];
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>${baseUrl}/</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>${baseUrl}/about</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${baseUrl}/services</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${baseUrl}/blog</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>${baseUrl}/contact</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
+  <url><loc>${baseUrl}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>${baseUrl}/about</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>${baseUrl}/services</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>${baseUrl}/portfolio</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>${baseUrl}/pricing</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>${baseUrl}/blog</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>${baseUrl}/contact</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
 </urlset>`;
   res.header("Content-Type", "application/xml");
   res.send(sitemap);
@@ -142,6 +124,10 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/pricing", pricingRoutes);
 app.use("/api/translations", translationRoutes);
+
+// ✅ NEW ROUTES
+app.use("/api/portfolio", portfolioRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // ─── 404 + Error Handlers ──────────────────────────
 app.use(notFound);
