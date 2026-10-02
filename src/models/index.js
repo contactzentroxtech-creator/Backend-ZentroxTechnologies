@@ -123,7 +123,7 @@ const blogSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   PORTFOLIO MODEL (NEW)
+   PORTFOLIO MODEL
 ═══════════════════════════════════════════════════════════════ */
 const portfolioSchema = new mongoose.Schema(
   {
@@ -145,7 +145,7 @@ const portfolioSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   REVIEW MODEL (NEW)
+   REVIEW MODEL
 ═══════════════════════════════════════════════════════════════ */
 const reviewSchema = new mongoose.Schema(
   {
