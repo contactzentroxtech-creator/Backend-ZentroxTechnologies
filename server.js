@@ -46,20 +46,63 @@ app.use(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   ROUTES IMPORT — Safe require (missing route = skip)
+   ROUTES IMPORT — Safe require (route missing = skip, no crash)
 ═══════════════════════════════════════════════════════════════ */
-let authRoutes, leadRoutes, referralRoutes, calculatorRoutes;
-let uploadRoutes, cmsRoutes, portfolioRoutes, reviewRoutes, blogRoutes;
+let authRoutes,
+  leadRoutes,
+  referralRoutes,
+  calculatorRoutes,
+  uploadRoutes,
+  cmsRoutes,
+  portfolioRoutes,
+  reviewRoutes,
+  blogRoutes;
 
-try { authRoutes = require("./src/routes/auth"); } catch (e) { console.warn("⚠️  auth route missing"); }
-try { leadRoutes = require("./src/routes/leads"); } catch (e) { console.warn("⚠️  leads route missing"); }
-try { referralRoutes = require("./src/routes/referrals"); } catch (e) { console.warn("⚠️  referrals route missing"); }
-try { calculatorRoutes = require("./src/routes/calculator"); } catch (e) { console.warn("⚠️  calculator route missing"); }
-try { uploadRoutes = require("./src/routes/upload"); } catch (e) { console.warn("⚠️  upload route missing:", e.message); }
-try { cmsRoutes = require("./src/routes/cms"); } catch (e) { console.warn("⚠️  cms route missing:", e.message); }
-try { portfolioRoutes = require("./src/routes/portfolio"); } catch (e) { console.warn("⚠️  portfolio route missing"); }
-try { reviewRoutes = require("./src/routes/reviews"); } catch (e) { console.warn("⚠️  reviews route missing"); }
-try { blogRoutes = require("./src/routes/blog"); } catch (e) { console.warn("⚠️  blog route missing"); }
+try {
+  authRoutes = require("./src/routes/auth");
+} catch (e) {
+  console.warn("⚠️  auth route missing:", e.message);
+}
+try {
+  leadRoutes = require("./src/routes/leads");
+} catch (e) {
+  console.warn("⚠️  leads route missing:", e.message);
+}
+try {
+  referralRoutes = require("./src/routes/referrals");
+} catch (e) {
+  console.warn("⚠️  referrals route missing:", e.message);
+}
+try {
+  calculatorRoutes = require("./src/routes/calculator");
+} catch (e) {
+  console.warn("⚠️  calculator route missing:", e.message);
+}
+try {
+  uploadRoutes = require("./src/routes/upload");
+} catch (e) {
+  console.warn("⚠️  upload route missing:", e.message);
+}
+try {
+  cmsRoutes = require("./src/routes/cms");
+} catch (e) {
+  console.warn("⚠️  cms route missing:", e.message);
+}
+try {
+  portfolioRoutes = require("./src/routes/portfolio");
+} catch (e) {
+  console.warn("⚠️  portfolio route missing:", e.message);
+}
+try {
+  reviewRoutes = require("./src/routes/reviews");
+} catch (e) {
+  console.warn("⚠️  reviews route missing:", e.message);
+}
+try {
+  blogRoutes = require("./src/routes/blog");
+} catch (e) {
+  console.warn("⚠️  blog route missing:", e.message);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    ROUTES REGISTER
@@ -75,7 +118,7 @@ if (reviewRoutes) app.use("/api/reviews", reviewRoutes);
 if (blogRoutes) app.use("/api/blog", blogRoutes);
 
 /* ═══════════════════════════════════════════════════════════════
-   HEALTH CHECK
+   ROOT + HEALTH CHECK
 ═══════════════════════════════════════════════════════════════ */
 app.get("/", (req, res) => {
   res.json({
@@ -127,7 +170,7 @@ const startServer = async () => {
     const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
 
     if (!mongoUri) {
-      console.warn("⚠️  MONGODB_URI not set");
+      console.warn("⚠️  MONGODB_URI not set — running without DB");
     } else {
       await mongoose.connect(mongoUri);
       console.log("✅ MongoDB connected");
