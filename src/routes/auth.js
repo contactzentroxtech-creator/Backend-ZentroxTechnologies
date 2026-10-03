@@ -5,7 +5,8 @@ const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
 /* ═══════════════════════════════════════════════════════════════
-   USER MODEL — reuse existing
+   USER MODEL — reuse existing from models/index.js
+   ⚠️ Inline define mat karo, warna "Cannot overwrite User model" error
 ═══════════════════════════════════════════════════════════════ */
 let User;
 try {
@@ -16,7 +17,7 @@ try {
     {
       name: { type: String, required: true },
       email: { type: String, required: true, unique: true, lowercase: true },
-      password: { type: String, required: true },
+      password: { type: String, required: true, select: false },
       role: { type: String, default: "user", enum: ["user", "admin", "mentor"] },
       isActive: { type: Boolean, default: true },
     },
@@ -25,6 +26,9 @@ try {
   User = mongoose.models.User || mongoose.model("User", userSchema);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   HELPER — JWT generate
+═══════════════════════════════════════════════════════════════ */
 const generateToken = (user) => {
   return jwt.sign(
     { id: user._id, email: user.email, role: user.role },
@@ -76,6 +80,7 @@ router.post("/register", async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    POST /api/auth/login
+   ⚠️ IMPORTANT: select("+password") — warna user.password undefined
 ═══════════════════════════════════════════════════════════════ */
 router.post("/login", async (req, res) => {
   try {
@@ -86,18 +91,32 @@ router.post("/login", async (req, res) => {
         message: "Email and password required",
       });
     }
-    const user = await User.findOne({ email: email.toLowerCase() });
+
+    // "+password" zaroori hai — warna password field load nahi hota
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password"
+    );
+
     if (!user) {
       return res
         .status(401)
         .json({ success: false, message: "Invalid credentials" });
     }
+
+    if (!user.password) {
+      return res.status(500).json({
+        success: false,
+        message: "Password not set for this user. Please use reset-admin.",
+      });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res
         .status(401)
         .json({ success: false, message: "Invalid credentials" });
     }
+
     const token = generateToken(user);
     res.json({
       success: true,
@@ -110,12 +129,13 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("LOGIN ERROR:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   POST /api/auth/seed-admin — ONE TIME
+   POST /api/auth/seed-admin — ONE TIME only
 ═══════════════════════════════════════════════════════════════ */
 router.post("/seed-admin", async (req, res) => {
   try {
@@ -149,29 +169,27 @@ router.post("/seed-admin", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   POST /api/auth/reset-admin — FORCE RESET (recovery only)
-   Yeh hamesha admin@zentrox.com ka password admin123 kar dega
+   POST /api/auth/reset-admin — Password reset (recovery)
 ═══════════════════════════════════════════════════════════════ */
 router.post("/reset-admin", async (req, res) => {
   try {
     const { email, newPassword } = req.body || {};
-
-    // Default: reset admin@zentrox.com to admin123
-    const targetEmail = email || "admin@zentrox.com";
+    const targetEmail = (email || "admin@zentrox.com").toLowerCase();
     const targetPassword = newPassword || "admin123";
 
     const hashedPassword = await bcrypt.hash(targetPassword, 10);
 
+    // Use findOneAndUpdate with option to include password on return
     const admin = await User.findOneAndUpdate(
-      { email: targetEmail.toLowerCase() },
+      { email: targetEmail },
       {
-        email: targetEmail.toLowerCase(),
+        email: targetEmail,
         password: hashedPassword,
         role: "admin",
         isActive: true,
         name: "Admin",
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
     res.json({
@@ -193,10 +211,48 @@ router.post("/reset-admin", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   GET /api/auth/me — Test
+   GET /api/auth/me — Auth check
 ═══════════════════════════════════════════════════════════════ */
 router.get("/me", async (req, res) => {
-  res.json({ success: true, message: "auth route active" });
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "No token provided",
+      });
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token" });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   POST /api/auth/logout
+═══════════════════════════════════════════════════════════════ */
+router.post("/logout", (req, res) => {
+  res.json({ success: true, message: "Logged out" });
 });
 
 module.exports = router;
