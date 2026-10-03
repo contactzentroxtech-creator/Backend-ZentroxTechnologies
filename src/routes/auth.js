@@ -6,7 +6,6 @@ const mongoose = require("mongoose");
 
 /* ═══════════════════════════════════════════════════════════════
    USER MODEL — reuse existing from models/index.js
-   ⚠️ Inline define mat karo, warna "Cannot overwrite User model" error
 ═══════════════════════════════════════════════════════════════ */
 let User;
 try {
@@ -66,8 +65,10 @@ router.post("/register", async (req, res) => {
     res.status(201).json({
       success: true,
       token,
+      accessToken: token,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -80,7 +81,6 @@ router.post("/register", async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    POST /api/auth/login
-   ⚠️ IMPORTANT: select("+password") — warna user.password undefined
 ═══════════════════════════════════════════════════════════════ */
 router.post("/login", async (req, res) => {
   try {
@@ -92,7 +92,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // "+password" zaroori hai — warna password field load nahi hota
     const user = await User.findOne({ email: email.toLowerCase() }).select(
       "+password"
     );
@@ -118,11 +117,15 @@ router.post("/login", async (req, res) => {
     }
 
     const token = generateToken(user);
+
+    // Both 'token' and 'accessToken' returned for frontend compatibility
     res.json({
       success: true,
       token,
+      accessToken: token,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -135,7 +138,7 @@ router.post("/login", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   POST /api/auth/seed-admin — ONE TIME only
+   POST /api/auth/seed-admin
 ═══════════════════════════════════════════════════════════════ */
 router.post("/seed-admin", async (req, res) => {
   try {
@@ -169,7 +172,7 @@ router.post("/seed-admin", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   POST /api/auth/reset-admin — Password reset (recovery)
+   POST /api/auth/reset-admin
 ═══════════════════════════════════════════════════════════════ */
 router.post("/reset-admin", async (req, res) => {
   try {
@@ -179,7 +182,6 @@ router.post("/reset-admin", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(targetPassword, 10);
 
-    // Use findOneAndUpdate with option to include password on return
     const admin = await User.findOneAndUpdate(
       { email: targetEmail },
       {
@@ -211,7 +213,7 @@ router.post("/reset-admin", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   GET /api/auth/me — Auth check
+   GET /api/auth/me
 ═══════════════════════════════════════════════════════════════ */
 router.get("/me", async (req, res) => {
   try {
@@ -236,6 +238,7 @@ router.get("/me", async (req, res) => {
       success: true,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
