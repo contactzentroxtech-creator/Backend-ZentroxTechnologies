@@ -3,11 +3,10 @@ const router = express.Router();
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const { protect, adminOnly } = require("../middleware/auth");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 /* ═══════════════════════════════════════════════════════════════
-   CLOUDINARY CONFIGURATION
-   Env vars: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+   CLOUDINARY CONFIG
 ═══════════════════════════════════════════════════════════════ */
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -29,7 +28,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith("image/")) {
       cb(null, true);
@@ -41,18 +40,16 @@ const upload = multer({
 
 /* ═══════════════════════════════════════════════════════════════
    IN-MEMORY MEDIA STORE
-   ⚠️ Production mein database use karo — abhi simple list ke liye
 ═══════════════════════════════════════════════════════════════ */
 let mediaStore = [];
 
 /* ═══════════════════════════════════════════════════════════════
    POST /api/upload
-   Upload single image to Cloudinary
 ═══════════════════════════════════════════════════════════════ */
 router.post(
   "/",
   protect,
-  adminOnly,
+  authorize("admin"),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -92,9 +89,8 @@ router.post(
 
 /* ═══════════════════════════════════════════════════════════════
    GET /api/upload
-   List all uploaded media
 ═══════════════════════════════════════════════════════════════ */
-router.get("/", protect, adminOnly, (req, res) => {
+router.get("/", protect, authorize("admin"), (req, res) => {
   res.json({
     success: true,
     data: mediaStore,
@@ -103,36 +99,36 @@ router.get("/", protect, adminOnly, (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    DELETE /api/upload/:publicId
-   Delete image from Cloudinary
-   Note: publicId can have slashes — use wildcard route
 ═══════════════════════════════════════════════════════════════ */
-router.delete("/:publicId(*)", protect, adminOnly, async (req, res) => {
-  try {
-    const { publicId } = req.params;
+router.delete(
+  "/:publicId(*)",
+  protect,
+  authorize("admin"),
+  async (req, res) => {
+    try {
+      const { publicId } = req.params;
 
-    if (!publicId) {
-      return res.status(400).json({
+      if (!publicId) {
+        return res.status(400).json({
+          success: false,
+          message: "publicId is required",
+        });
+      }
+
+      await cloudinary.uploader.destroy(publicId);
+      mediaStore = mediaStore.filter((m) => m.publicId !== publicId);
+
+      res.json({
+        success: true,
+        message: "Image deleted successfully",
+      });
+    } catch (err) {
+      res.status(500).json({
         success: false,
-        message: "publicId is required",
+        message: err.message || "Delete failed",
       });
     }
-
-    // Delete from Cloudinary
-    await cloudinary.uploader.destroy(publicId);
-
-    // Remove from in-memory store
-    mediaStore = mediaStore.filter((m) => m.publicId !== publicId);
-
-    res.json({
-      success: true,
-      message: "Image deleted successfully",
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message || "Delete failed",
-    });
   }
-});
+);
 
 module.exports = router;
