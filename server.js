@@ -14,7 +14,7 @@ require("dotenv").config({ path: path.resolve(__dirname, "./.env") });
 const { errorHandler, notFound } = require("./src/middleware/errorMiddleware");
 const logger = require("./src/utils/logger");
 
-// ─── Route Imports (Only Required) ──────────────────
+// ─── Route Imports ──────────────────
 const authRoutes = require("./src/routes/auth");
 const userRoutes = require("./src/routes/users");
 const leadRoutes = require("./src/routes/leads");
@@ -26,10 +26,9 @@ const analyticsRoutes = require("./src/routes/analytics");
 const uploadRoutes = require("./src/routes/upload");
 const pricingRoutes = require("./src/routes/pricing");
 const translationRoutes = require("./src/routes/translations");
-
-// ✅ NEW ROUTES
 const portfolioRoutes = require("./src/routes/portfolio");
 const reviewRoutes = require("./src/routes/reviews");
+const referralRoutes = require("./src/routes/referrals");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -124,10 +123,9 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/pricing", pricingRoutes);
 app.use("/api/translations", translationRoutes);
-
-// ✅ NEW ROUTES
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/referrals", referralRoutes);
 
 // ─── 404 + Error Handlers ──────────────────────────
 app.use(notFound);
