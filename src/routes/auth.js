@@ -5,16 +5,13 @@ const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
 /* ═══════════════════════════════════════════════════════════════
-   USER MODEL — Use existing model from models/index.js
-   ⚠️ Inline define MAT karo — "Cannot overwrite User model" error aata hai
+   USER MODEL — reuse existing
 ═══════════════════════════════════════════════════════════════ */
 let User;
 try {
-  // Try to import from models/index.js (existing model)
   const models = require("../models");
   User = models.User;
 } catch (e) {
-  // Fallback: create inline if models folder doesn't have User
   const userSchema = new mongoose.Schema(
     {
       name: { type: String, required: true },
@@ -28,9 +25,6 @@ try {
   User = mongoose.models.User || mongoose.model("User", userSchema);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   HELPER — JWT
-═══════════════════════════════════════════════════════════════ */
 const generateToken = (user) => {
   return jwt.sign(
     { id: user._id, email: user.email, role: user.role },
@@ -155,7 +149,51 @@ router.post("/seed-admin", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   GET /api/auth/me
+   POST /api/auth/reset-admin — FORCE RESET (recovery only)
+   Yeh hamesha admin@zentrox.com ka password admin123 kar dega
+═══════════════════════════════════════════════════════════════ */
+router.post("/reset-admin", async (req, res) => {
+  try {
+    const { email, newPassword } = req.body || {};
+
+    // Default: reset admin@zentrox.com to admin123
+    const targetEmail = email || "admin@zentrox.com";
+    const targetPassword = newPassword || "admin123";
+
+    const hashedPassword = await bcrypt.hash(targetPassword, 10);
+
+    const admin = await User.findOneAndUpdate(
+      { email: targetEmail.toLowerCase() },
+      {
+        email: targetEmail.toLowerCase(),
+        password: hashedPassword,
+        role: "admin",
+        isActive: true,
+        name: "Admin",
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({
+      success: true,
+      message: `Admin password reset for ${targetEmail}`,
+      credentials: {
+        email: targetEmail,
+        password: targetPassword,
+      },
+      user: {
+        id: admin._id,
+        email: admin.email,
+        role: admin.role,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   GET /api/auth/me — Test
 ═══════════════════════════════════════════════════════════════ */
 router.get("/me", async (req, res) => {
   res.json({ success: true, message: "auth route active" });
