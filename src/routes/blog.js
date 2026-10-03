@@ -1,104 +1,160 @@
 const express = require("express");
 const router = express.Router();
-const { Blog } = require("../models");
-const { protect, authorize } = require("../middleware/authMiddleware");
-const slugify = require("slugify");
+const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
-// =========================================================================
-// ADMIN ROUTES
-// =========================================================================
-
-// Admin: get all including drafts
-router.get(
-  "/admin/all",
-  protect,
-  authorize("admin"),
-  async (req, res, next) => {
-    try {
-      const posts = await Blog.find().sort({ createdAt: -1 });
-      res.json({ success: true, data: posts });
-    } catch (err) {
-      next(err);
+/* ═══════════════════════════════════════════════════════════════
+   INLINE AUTH — no middleware dependency
+═══════════════════════════════════════════════════════════════ */
+const protect = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "No token provided." });
     }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token." });
   }
-);
+};
 
-// Admin: Create Blog
-router.post(
-  "/",
-  protect,
-  authorize("admin"),
-  async (req, res, next) => {
-    try {
-      const slug = slugify(req.body.title, { lower: true, strict: true });
-      const readTime = Math.ceil(
-        (req.body.content || "").split(" ").length / 200
-      );
-      const post = await Blog.create({
-        ...req.body,
-        slug,
-        readTime,
-        authorName: req.body.authorName || req.user.name,
-        author: req.user._id,
-        publishedAt: req.body.isPublished ? new Date() : undefined,
+const authorize =
+  (...roles) =>
+  (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Required role: ${roles.join(" or ")}`,
       });
-      res
-        .status(201)
-        .json({ success: true, data: post, message: "Blog post created." });
-    } catch (err) {
-      next(err);
     }
-  }
+    next();
+  };
+
+/* ═══════════════════════════════════════════════════════════════
+   BLOG MODEL — inline schema (no dependency on models/index.js)
+═══════════════════════════════════════════════════════════════ */
+const blogSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    slug: { type: String, required: true, unique: true, index: true },
+    excerpt: { type: String, default: "" },
+    content: { type: String, default: "" },
+    image: { type: String, default: "" },
+    category: { type: String, default: "General" },
+    tags: { type: [String], default: [] },
+    authorName: { type: String, default: "Admin" },
+    author: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    readTime: { type: Number, default: 1 },
+    isPublished: { type: Boolean, default: false },
+    featured: { type: Boolean, default: false },
+    publishedAt: { type: Date },
+    viewCount: { type: Number, default: 0 },
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    dislikes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    comments: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        userName: String,
+        text: String,
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+  },
+  { timestamps: true }
 );
 
-// Admin: Update Blog
-router.patch(
-  "/:id",
-  protect,
-  authorize("admin", "admin"),
-  async (req, res, next) => {
-    try {
-      if (req.body.title)
-        req.body.slug = slugify(req.body.title, { lower: true, strict: true });
-      if (req.body.isPublished && !req.body.publishedAt)
-        req.body.publishedAt = new Date();
+const Blog =
+  mongoose.models.Blog || mongoose.model("Blog", blogSchema);
 
-      // Recalculate read time if markdown content was updated
-      if (req.body.content) {
-        req.body.readTime = Math.ceil(req.body.content.split(" ").length / 200);
-      }
+/* ─── Slugify helper (no dependency) ─── */
+const slugifyText = (text) => {
+  return String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+};
 
-      const post = await Blog.findByIdAndUpdate(req.params.id, req.body, {
-        new: true,
-      });
-      res.json({ success: true, data: post, message: "Post updated." });
-    } catch (err) {
-      next(err);
-    }
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN ROUTES
+═══════════════════════════════════════════════════════════════ */
+
+/* Admin: Get all posts (including drafts) */
+router.get("/admin/all", protect, authorize("admin"), async (req, res) => {
+  try {
+    const posts = await Blog.find().sort({ createdAt: -1 });
+    res.json({ success: true, data: posts });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
-);
+});
 
-// Admin: Delete Blog
-router.delete(
-  "/:id",
-  protect,
-  authorize("admin"),
-  async (req, res, next) => {
-    try {
-      await Blog.findByIdAndDelete(req.params.id);
-      res.json({ success: true, message: "Post deleted." });
-    } catch (err) {
-      next(err);
-    }
+/* Admin: Create post */
+router.post("/", protect, authorize("admin"), async (req, res) => {
+  try {
+    const slug = slugifyText(req.body.title);
+    const readTime = Math.ceil(
+      (req.body.content || "").split(" ").length / 200
+    );
+    const post = await Blog.create({
+      ...req.body,
+      slug,
+      readTime,
+      authorName: req.body.authorName || req.user.email || "Admin",
+      author: req.user.id,
+      publishedAt: req.body.isPublished ? new Date() : undefined,
+    });
+    res
+      .status(201)
+      .json({ success: true, data: post, message: "Blog post created." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
-);
+});
 
-// =========================================================================
-// PUBLIC USER INTERACTIONS & READ ROUTES
-// =========================================================================
+/* Admin: Update post */
+router.patch("/:id", protect, authorize("admin"), async (req, res) => {
+  try {
+    if (req.body.title) req.body.slug = slugifyText(req.body.title);
+    if (req.body.isPublished && !req.body.publishedAt)
+      req.body.publishedAt = new Date();
+    if (req.body.content) {
+      req.body.readTime = Math.ceil(req.body.content.split(" ").length / 200);
+    }
 
-// Public: Get all published blogs
-router.get("/", async (req, res, next) => {
+    const post = await Blog.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+    res.json({ success: true, data: post, message: "Post updated." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* Admin: Delete post */
+router.delete("/:id", protect, authorize("admin"), async (req, res) => {
+  try {
+    await Blog.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Post deleted." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC READ ROUTES
+═══════════════════════════════════════════════════════════════ */
+
+/* Public: Get published posts */
+router.get("/", async (req, res) => {
   try {
     const { category, tag, page = 1, limit = 9, search, featured } = req.query;
     const filter = { isPublished: true };
@@ -123,12 +179,12 @@ router.get("/", async (req, res, next) => {
       pages: Math.ceil(total / limit),
     });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Public: Get dynamic post by slug
-router.get("/:slug", async (req, res, next) => {
+/* Public: Get post by slug */
+router.get("/:slug", async (req, res) => {
   try {
     const post = await Blog.findOne({
       slug: req.params.slug,
@@ -138,37 +194,32 @@ router.get("/:slug", async (req, res, next) => {
       return res
         .status(404)
         .json({ success: false, message: "Post not found." });
-
-    // await Blog.findByIdAndUpdate(post._id, { $inc: { viewCount: 1 } });
     res.json({ success: true, data: post });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-router.put("/:id/view", async (req, res, next) => {
+/* View counter */
+router.put("/:id/view", async (req, res) => {
   try {
-    // Atomic update avoids overlapping thread conflicts safely
     const post = await Blog.findByIdAndUpdate(
       req.params.id,
       { $inc: { viewCount: 1 } },
       { new: true }
     );
-
-    if (!post) {
+    if (!post)
       return res
         .status(404)
-        .json({ success: false, message: "Post data not available." });
-    }
-
+        .json({ success: false, message: "Post not found." });
     res.json({ success: true, currentViews: post.viewCount });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// User Interaction: Like a blog post
-router.put("/:id/like", protect, async (req, res, next) => {
+/* Like */
+router.put("/:id/like", protect, async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id);
     if (!blog)
@@ -176,22 +227,17 @@ router.put("/:id/like", protect, async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Blog post not found" });
 
-    const userId = req.user._id;
-    const hasLiked = blog.likes.includes(userId);
+    const userId = req.user.id;
+    const hasLiked = blog.likes.map(String).includes(String(userId));
 
     if (hasLiked) {
-      // If already liked, remove the like
-      blog.likes = blog.likes.filter(
-        (id) => id.toString() !== userId.toString()
-      );
+      blog.likes = blog.likes.filter((id) => String(id) !== String(userId));
     } else {
-      // Add like and clean up user's potential dislike
       blog.likes.push(userId);
       blog.dislikes = blog.dislikes.filter(
-        (id) => id.toString() !== userId.toString()
+        (id) => String(id) !== String(userId)
       );
     }
-
     await blog.save();
     res.json({
       success: true,
@@ -199,12 +245,12 @@ router.put("/:id/like", protect, async (req, res, next) => {
       dislikesCount: blog.dislikes.length,
     });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// User Interaction: Dislike a blog post
-router.put("/:id/dislike", protect, async (req, res, next) => {
+/* Dislike */
+router.put("/:id/dislike", protect, async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id);
     if (!blog)
@@ -212,22 +258,17 @@ router.put("/:id/dislike", protect, async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Blog post not found" });
 
-    const userId = req.user._id;
-    const hasDisliked = blog.dislikes.includes(userId);
+    const userId = req.user.id;
+    const hasDisliked = blog.dislikes.map(String).includes(String(userId));
 
     if (hasDisliked) {
-      // If already disliked, remove the dislike
       blog.dislikes = blog.dislikes.filter(
-        (id) => id.toString() !== userId.toString()
+        (id) => String(id) !== String(userId)
       );
     } else {
-      // Add dislike and clean up user's potential like
       blog.dislikes.push(userId);
-      blog.likes = blog.likes.filter(
-        (id) => id.toString() !== userId.toString()
-      );
+      blog.likes = blog.likes.filter((id) => String(id) !== String(userId));
     }
-
     await blog.save();
     res.json({
       success: true,
@@ -235,12 +276,12 @@ router.put("/:id/dislike", protect, async (req, res, next) => {
       dislikesCount: blog.dislikes.length,
     });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// User Interaction: Write a comment on a blog
-router.post("/:id/comment", protect, async (req, res, next) => {
+/* Comment */
+router.post("/:id/comment", protect, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text || !text.trim()) {
@@ -248,27 +289,24 @@ router.post("/:id/comment", protect, async (req, res, next) => {
         .status(400)
         .json({ success: false, message: "Comment content cannot be empty" });
     }
-
     const blog = await Blog.findById(req.params.id);
     if (!blog)
       return res
         .status(404)
         .json({ success: false, message: "Blog post not found" });
 
-    const newComment = {
-      user: req.user._id,
-      userName: req.user.name, // Falls back to the decoded request user context
+    blog.comments.push({
+      user: req.user.id,
+      userName: req.user.email || "User",
       text: text.trim(),
-    };
-
-    blog.comments.push(newComment);
+    });
     await blog.save();
 
     res
       .status(201)
       .json({ success: true, data: blog.comments, message: "Comment added." });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
