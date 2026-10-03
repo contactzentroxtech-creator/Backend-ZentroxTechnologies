@@ -29,6 +29,7 @@ const translationRoutes = require("./src/routes/translations");
 const portfolioRoutes = require("./src/routes/portfolio");
 const reviewRoutes = require("./src/routes/reviews");
 const referralRoutes = require("./src/routes/referrals");
+const calculatorRoutes = require("./src/routes/calculator");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -103,6 +104,7 @@ app.get("/sitemap.xml", (req, res) => {
   <url><loc>${baseUrl}/about</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>${baseUrl}/services</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>${baseUrl}/portfolio</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>${baseUrl}/calculator</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>${baseUrl}/pricing</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>${baseUrl}/blog</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
   <url><loc>${baseUrl}/contact</loc><lastmod>${today}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
@@ -126,6 +128,7 @@ app.use("/api/translations", translationRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/referrals", referralRoutes);
+app.use("/api/calculator", calculatorRoutes);
 
 // ─── 404 + Error Handlers ──────────────────────────
 app.use(notFound);
