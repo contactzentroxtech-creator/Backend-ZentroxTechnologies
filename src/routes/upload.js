@@ -3,7 +3,41 @@ const router = express.Router();
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const { protect, authorize } = require("../middleware/authMiddleware");
+const jwt = require("jsonwebtoken");
+
+/* ═══════════════════════════════════════════════════════════════
+   INLINE AUTH — No middleware dependency
+═══════════════════════════════════════════════════════════════ */
+const protect = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "No token provided." });
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token." });
+  }
+};
+
+const authorize =
+  (...roles) =>
+  (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Required role: ${roles.join(" or ")}`,
+      });
+    }
+    next();
+  };
 
 /* ═══════════════════════════════════════════════════════════════
    CLOUDINARY CONFIG
@@ -54,10 +88,9 @@ router.post(
   async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: "No file uploaded",
-        });
+        return res
+          .status(400)
+          .json({ success: false, message: "No file uploaded" });
       }
 
       const item = {
@@ -79,10 +112,9 @@ router.post(
         message: "Image uploaded successfully",
       });
     } catch (err) {
-      res.status(500).json({
-        success: false,
-        message: err.message || "Upload failed",
-      });
+      res
+        .status(500)
+        .json({ success: false, message: err.message || "Upload failed" });
     }
   }
 );
@@ -91,10 +123,7 @@ router.post(
    GET /api/upload
 ═══════════════════════════════════════════════════════════════ */
 router.get("/", protect, authorize("admin"), (req, res) => {
-  res.json({
-    success: true,
-    data: mediaStore,
-  });
+  res.json({ success: true, data: mediaStore });
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -107,26 +136,20 @@ router.delete(
   async (req, res) => {
     try {
       const { publicId } = req.params;
-
       if (!publicId) {
-        return res.status(400).json({
-          success: false,
-          message: "publicId is required",
-        });
+        return res
+          .status(400)
+          .json({ success: false, message: "publicId is required" });
       }
 
       await cloudinary.uploader.destroy(publicId);
       mediaStore = mediaStore.filter((m) => m.publicId !== publicId);
 
-      res.json({
-        success: true,
-        message: "Image deleted successfully",
-      });
+      res.json({ success: true, message: "Image deleted successfully" });
     } catch (err) {
-      res.status(500).json({
-        success: false,
-        message: err.message || "Delete failed",
-      });
+      res
+        .status(500)
+        .json({ success: false, message: err.message || "Delete failed" });
     }
   }
 );
