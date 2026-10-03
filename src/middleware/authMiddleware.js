@@ -1,57 +1,134 @@
-const jwt = require("jsonwebtoken");
-const { User } = require("../models");
+const express = require("express");
+const router = express.Router();
+const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
-const protect = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
+/* ═══════════════════════════════════════════════════════════════
+   CLOUDINARY CONFIG
+═══════════════════════════════════════════════════════════════ */
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-    console.log("AUTH HEADER:", authHeader);
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res
-        .status(401)
-        .json({ success: false, message: "No token provided." });
+/* ═══════════════════════════════════════════════════════════════
+   MULTER + CLOUDINARY STORAGE
+═══════════════════════════════════════════════════════════════ */
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "zentrox-media",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "gif", "svg"],
+    transformation: [{ quality: "auto", fetch_format: "auto" }],
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"), false);
     }
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  },
+});
 
-    console.log("DECODED TOKEN:", decoded);
+/* ═══════════════════════════════════════════════════════════════
+   IN-MEMORY MEDIA STORE
+═══════════════════════════════════════════════════════════════ */
+let mediaStore = [];
 
-    
-    const user = await User.findById(decoded.id).select(
-      "-password -refreshToken"
-    );
+/* ═══════════════════════════════════════════════════════════════
+   POST /api/upload — Upload image (admin only)
+═══════════════════════════════════════════════════════════════ */
+router.post(
+  "/",
+  protect,
+  authorize("admin"),
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No file uploaded",
+        });
+      }
 
-    console.log("USER FROM DB:", user);
-    console.log("USER IS ACTIVE:", user?.isActive);
+      const item = {
+        url: req.file.path,
+        publicId: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        format: req.file.format || req.file.mimetype?.split("/")[1] || "jpg",
+        width: req.file.width,
+        height: req.file.height,
+        createdAt: new Date().toISOString(),
+      };
 
-    
-    if (!user || !user.isActive) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Account not found or deactivated." });
-    }
-    req.user = user;
-    next();
-  } catch (err) {
-    return res
-      .status(401)
-      .json({ success: false, message: "Invalid or expired token." });
-  }
-};
+      mediaStore.unshift(item);
 
-const authorize =
-  (...roles) =>
-  (req, res, next) => {
-    if (!roles.includes(req.user?.role)) {
-      return res.status(403).json({
+      res.json({
+        success: true,
+        data: item,
+        message: "Image uploaded successfully",
+      });
+    } catch (err) {
+      res.status(500).json({
         success: false,
-        message: `Access denied. Required role: ${roles.join(" or ")}`,
+        message: err.message || "Upload failed",
       });
     }
-    next();
-  };
+  }
+);
 
-const adminOnly = [protect, authorize("admin")];
-const mentorOrAdmin = [protect, authorize("admin", "mentor")];
+/* ═══════════════════════════════════════════════════════════════
+   GET /api/upload — List media (admin only)
+═══════════════════════════════════════════════════════════════ */
+router.get("/", protect, authorize("admin"), (req, res) => {
+  res.json({
+    success: true,
+    data: mediaStore,
+  });
+});
 
-module.exports = { protect, authorize, adminOnly, mentorOrAdmin };
+/* ═══════════════════════════════════════════════════════════════
+   DELETE /api/upload/:publicId — Delete (admin only)
+═══════════════════════════════════════════════════════════════ */
+router.delete(
+  "/:publicId(*)",
+  protect,
+  authorize("admin"),
+  async (req, res) => {
+    try {
+      const { publicId } = req.params;
+
+      if (!publicId) {
+        return res.status(400).json({
+          success: false,
+          message: "publicId is required",
+        });
+      }
+
+      await cloudinary.uploader.destroy(publicId);
+      mediaStore = mediaStore.filter((m) => m.publicId !== publicId);
+
+      res.json({
+        success: true,
+        message: "Image deleted successfully",
+      });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        message: err.message || "Delete failed",
+      });
+    }
+  }
+);
+
+module.exports = router;
