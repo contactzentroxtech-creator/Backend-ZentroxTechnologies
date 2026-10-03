@@ -31,7 +31,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow requests with no origin (mobile apps, postman, curl)
       if (!origin) return callback(null, true);
       if (
         allowedOrigins.includes(origin) ||
@@ -47,30 +46,33 @@ app.use(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   ROUTES IMPORT
+   ROUTES IMPORT — Safe require (missing route = skip)
 ═══════════════════════════════════════════════════════════════ */
-const authRoutes = require("./src/routes/auth");
-const leadRoutes = require("./src/routes/leads");
-const referralRoutes = require("./src/routes/referrals");
-const calculatorRoutes = require("./src/routes/calculator");
-const uploadRoutes = require("./src/routes/upload");
-const cmsRoutes = require("./src/routes/cms");
-const portfolioRoutes = require("./src/routes/portfolio");
-const reviewRoutes = require("./src/routes/reviews");
-const blogRoutes = require("./src/routes/blog");
+let authRoutes, leadRoutes, referralRoutes, calculatorRoutes;
+let uploadRoutes, cmsRoutes, portfolioRoutes, reviewRoutes, blogRoutes;
+
+try { authRoutes = require("./src/routes/auth"); } catch (e) { console.warn("⚠️  auth route missing"); }
+try { leadRoutes = require("./src/routes/leads"); } catch (e) { console.warn("⚠️  leads route missing"); }
+try { referralRoutes = require("./src/routes/referrals"); } catch (e) { console.warn("⚠️  referrals route missing"); }
+try { calculatorRoutes = require("./src/routes/calculator"); } catch (e) { console.warn("⚠️  calculator route missing"); }
+try { uploadRoutes = require("./src/routes/upload"); } catch (e) { console.warn("⚠️  upload route missing:", e.message); }
+try { cmsRoutes = require("./src/routes/cms"); } catch (e) { console.warn("⚠️  cms route missing:", e.message); }
+try { portfolioRoutes = require("./src/routes/portfolio"); } catch (e) { console.warn("⚠️  portfolio route missing"); }
+try { reviewRoutes = require("./src/routes/reviews"); } catch (e) { console.warn("⚠️  reviews route missing"); }
+try { blogRoutes = require("./src/routes/blog"); } catch (e) { console.warn("⚠️  blog route missing"); }
 
 /* ═══════════════════════════════════════════════════════════════
    ROUTES REGISTER
 ═══════════════════════════════════════════════════════════════ */
-app.use("/api/auth", authRoutes);
-app.use("/api/leads", leadRoutes);
-app.use("/api/referrals", referralRoutes);
-app.use("/api/calculator", calculatorRoutes);
-app.use("/api/upload", uploadRoutes);
-app.use("/api/cms", cmsRoutes);
-app.use("/api/portfolio", portfolioRoutes);
-app.use("/api/reviews", reviewRoutes);
-app.use("/api/blog", blogRoutes);
+if (authRoutes) app.use("/api/auth", authRoutes);
+if (leadRoutes) app.use("/api/leads", leadRoutes);
+if (referralRoutes) app.use("/api/referrals", referralRoutes);
+if (calculatorRoutes) app.use("/api/calculator", calculatorRoutes);
+if (uploadRoutes) app.use("/api/upload", uploadRoutes);
+if (cmsRoutes) app.use("/api/cms", cmsRoutes);
+if (portfolioRoutes) app.use("/api/portfolio", portfolioRoutes);
+if (reviewRoutes) app.use("/api/reviews", reviewRoutes);
+if (blogRoutes) app.use("/api/blog", blogRoutes);
 
 /* ═══════════════════════════════════════════════════════════════
    HEALTH CHECK
@@ -114,19 +116,18 @@ app.use((err, req, res, next) => {
   res.status(status).json({
     success: false,
     message: err.message || "Internal server error",
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   START SERVER — With MongoDB Connection
+   START SERVER
 ═══════════════════════════════════════════════════════════════ */
 const startServer = async () => {
   try {
     const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
 
     if (!mongoUri) {
-      console.warn("⚠️  MONGODB_URI not set — running without DB (in-memory only)");
+      console.warn("⚠️  MONGODB_URI not set");
     } else {
       await mongoose.connect(mongoUri);
       console.log("✅ MongoDB connected");
@@ -134,7 +135,6 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
     });
   } catch (err) {
     console.error("❌ Failed to start server:", err.message);
@@ -148,7 +148,7 @@ startServer();
    GRACEFUL SHUTDOWN
 ═══════════════════════════════════════════════════════════════ */
 process.on("SIGTERM", async () => {
-  console.log("SIGTERM received — shutting down gracefully");
+  console.log("SIGTERM received — shutting down");
   await mongoose.connection.close();
   process.exit(0);
 });
