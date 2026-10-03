@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 /* ═══════════════════════════════════════════════════════════════
-   INLINE AUTH — No dependency on middleware files
-   (Issues with authMiddleware/models ko bypass karta hai)
+   INLINE AUTH
 ═══════════════════════════════════════════════════════════════ */
 const protect = (req, res, next) => {
   try {
@@ -38,35 +38,38 @@ const authorize =
   };
 
 /* ═══════════════════════════════════════════════════════════════
-   IN-MEMORY CMS STORE
-   ⚠️ Production mein MongoDB use karo. Abhi ke liye in-memory.
+   MONGOOSE MODEL — CMS Data (key-value pairs)
 ═══════════════════════════════════════════════════════════════ */
-let cmsStore = {
-  /* ─── Hero ─── */
+const cmsSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, index: true },
+    value: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
+const CMS = mongoose.models.CMS || mongoose.model("CMS", cmsSchema);
+
+/* ═══════════════════════════════════════════════════════════════
+   DEFAULT VALUES
+═══════════════════════════════════════════════════════════════ */
+const DEFAULTS = {
   hero_title: "Build. Grow. Scale with Zentrox Technologies",
   hero_subtitle:
     "From websites and mobile apps to AI-powered software and digital marketing — we deliver end-to-end solutions that move your business forward.",
   hero_image: "",
   hero_cta_text: "Start Your Project",
-
-  /* ─── About ─── */
   about_title: "About Zentrox Technologies",
   about_description:
     "We are a team of passionate developers, designers, and marketers helping businesses grow with cutting-edge technology.",
   about_image: "",
-
-  /* ─── Services ─── */
   services_title: "Services That Drive Real Growth",
   services_subtitle:
     "From web and mobile to AI and marketing — we deliver end-to-end solutions under one roof.",
   services_image: "",
-
-  /* ─── Contact ─── */
   contact_phone: "+91 89881 83513",
   contact_email: "contact.zentroxtech@gmail.com",
   contact_address: "Mohali & Chandigarh, Punjab, India",
-
-  /* ─── Social ─── */
   social_facebook: "",
   social_instagram: "",
   social_linkedin: "",
@@ -75,16 +78,35 @@ let cmsStore = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
+   HELPER — Build full CMS object from DB
+═══════════════════════════════════════════════════════════════ */
+async function getFullCMS() {
+  const docs = await CMS.find({});
+  const dbData = {};
+  docs.forEach((doc) => {
+    dbData[doc.key] = doc.value;
+  });
+  // DB values override defaults
+  return { ...DEFAULTS, ...dbData };
+}
+
+/* ═══════════════════════════════════════════════════════════════
    GET /api/cms — Public
 ═══════════════════════════════════════════════════════════════ */
-router.get("/", (req, res) => {
-  res.json({ success: true, data: cmsStore });
+router.get("/", async (req, res) => {
+  try {
+    const data = await getFullCMS();
+    res.json({ success: true, data });
+  } catch (err) {
+    // Fallback to defaults if DB error
+    res.json({ success: true, data: DEFAULTS });
+  }
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   PUT /api/cms — Admin only
+   PUT /api/cms — Admin only — Save to DB
 ═══════════════════════════════════════════════════════════════ */
-router.put("/", protect, authorize("admin"), (req, res) => {
+router.put("/", protect, authorize("admin"), async (req, res) => {
   try {
     const updates = req.body;
     if (!updates || typeof updates !== "object") {
@@ -93,49 +115,78 @@ router.put("/", protect, authorize("admin"), (req, res) => {
         message: "Invalid payload. Expected key-value object.",
       });
     }
-    cmsStore = { ...cmsStore, ...updates };
+
+    // Save each key to DB (upsert)
+    const ops = Object.entries(updates).map(([key, value]) => ({
+      updateOne: {
+        filter: { key },
+        update: { key, value: String(value || "") },
+        upsert: true,
+      },
+    }));
+
+    if (ops.length > 0) {
+      await CMS.bulkWrite(ops);
+    }
+
+    const data = await getFullCMS();
+
     res.json({
       success: true,
-      data: cmsStore,
-      message: "CMS settings updated successfully",
+      data,
+      message: "CMS settings saved to database",
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: err.message || "Update failed" });
+    res.status(500).json({
+      success: false,
+      message: err.message || "Update failed",
+    });
   }
 });
 
 /* ═══════════════════════════════════════════════════════════════
    GET /api/cms/:key — Public
 ═══════════════════════════════════════════════════════════════ */
-router.get("/:key", (req, res) => {
-  const { key } = req.params;
-  if (!(key in cmsStore)) {
-    return res
-      .status(404)
-      .json({ success: false, message: `CMS key "${key}" not found` });
+router.get("/:key", async (req, res) => {
+  try {
+    const { key } = req.params;
+    const doc = await CMS.findOne({ key });
+    const value = doc?.value ?? DEFAULTS[key] ?? "";
+
+    res.json({ success: true, data: { key, value } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
-  res.json({ success: true, data: { key, value: cmsStore[key] } });
 });
 
 /* ═══════════════════════════════════════════════════════════════
    PUT /api/cms/:key — Admin only
 ═══════════════════════════════════════════════════════════════ */
-router.put("/:key", protect, authorize("admin"), (req, res) => {
-  const { key } = req.params;
-  const { value } = req.body;
-  if (value === undefined) {
-    return res
-      .status(400)
-      .json({ success: false, message: "value is required" });
+router.put("/:key", protect, authorize("admin"), async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+
+    if (value === undefined) {
+      return res
+        .status(400)
+        .json({ success: false, message: "value is required" });
+    }
+
+    await CMS.findOneAndUpdate(
+      { key },
+      { key, value: String(value) },
+      { upsert: true, new: true }
+    );
+
+    res.json({
+      success: true,
+      data: { key, value },
+      message: "CMS value updated",
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
-  cmsStore[key] = value;
-  res.json({
-    success: true,
-    data: { key, value },
-    message: "CMS value updated",
-  });
 });
 
 module.exports = router;
