@@ -92,6 +92,13 @@ const leadSchema = new mongoose.Schema(
     utmCampaign: String,
     ipAddress: String,
     userAgent: String,
+    referralCode: { type: String, default: "" },
+    referralOwner: { type: String, default: "" },
+    discountPercent: { type: Number, default: 0 },
+    baseEstimate: { type: Number, default: 0 },
+    finalEstimate: { type: Number, default: 0 },
+    projectType: { type: String, default: "" },
+    projectDetails: { type: Object, default: {} },
   },
   { timestamps: true }
 );
@@ -252,6 +259,57 @@ const paymentSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
+   REFERRAL CODE MODEL (NEW)
+═══════════════════════════════════════════════════════════════ */
+const referralCodeSchema = new mongoose.Schema(
+  {
+    code: {
+      type: String,
+      required: true,
+      unique: true,
+      uppercase: true,
+      trim: true,
+    },
+    ownerName: { type: String, required: true, trim: true },
+    ownerPhone: { type: String, trim: true },
+    ownerEmail: { type: String, trim: true, lowercase: true },
+    ownerRole: {
+      type: String,
+      enum: ["sales", "partner", "affiliate", "employee", "other"],
+      default: "sales",
+    },
+    discountPercent: { type: Number, default: 20, min: 0, max: 50 },
+    maxUses: { type: Number, default: 1, min: 1 },
+    usedCount: { type: Number, default: 0 },
+    usedBy: [
+      {
+        name: String,
+        email: String,
+        phone: String,
+        projectType: String,
+        baseEstimate: Number,
+        finalEstimate: Number,
+        usedAt: { type: Date, default: Date.now },
+      },
+    ],
+    isActive: { type: Boolean, default: true },
+    expiresAt: { type: Date },
+    notes: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+
+referralCodeSchema.methods.isValid = function () {
+  if (!this.isActive) return { valid: false, reason: "Code is inactive" };
+  if (this.usedCount >= this.maxUses)
+    return { valid: false, reason: "Code usage limit reached" };
+  if (this.expiresAt && new Date() > this.expiresAt)
+    return { valid: false, reason: "Code has expired" };
+  return { valid: true };
+};
+
+/* ═══════════════════════════════════════════════════════════════
    EXPORTS
 ═══════════════════════════════════════════════════════════════ */
 const User = mongoose.model("User", userSchema);
@@ -263,6 +321,7 @@ const SiteSetting = mongoose.model("SiteSetting", siteSettingsSchema);
 const Popup = mongoose.model("Popup", popupSchema);
 const Analytics = mongoose.model("Analytics", analyticsSchema);
 const Payment = mongoose.model("Payment", paymentSchema);
+const ReferralCode = mongoose.model("ReferralCode", referralCodeSchema);
 
 module.exports = {
   User,
@@ -274,4 +333,5 @@ module.exports = {
   Popup,
   Analytics,
   Payment,
+  ReferralCode,
 };
