@@ -19,106 +19,49 @@ app.use(morgan("dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-/* ─── CORS ─── */
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://zentroxtechnologies.com",
-  "https://www.zentroxtechnologies.com",
-  "https://zentrox-technologies.netlify.app",
-];
-
+/* ═══════════════════════════════════════════════════════════════
+   CORS — Allow ALL origins (fix for all CORS errors)
+   ⚠️ Production mein specific origins list karo
+═══════════════════════════════════════════════════════════════ */
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (
-        allowedOrigins.includes(origin) ||
-        origin.endsWith(".netlify.app") ||
-        origin.endsWith(".onrender.com")
-      ) {
-        return callback(null, true);
-      }
-      return callback(new Error(`CORS blocked: ${origin}`));
-    },
+    origin: true,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 
+/* Handle preflight requests */
+app.options("*", cors());
+
 /* ═══════════════════════════════════════════════════════════════
-   ROUTES IMPORT — Safe require (route missing = skip, no crash)
+   ROUTES IMPORT — Safe loading
 ═══════════════════════════════════════════════════════════════ */
-let authRoutes,
-  leadRoutes,
-  referralRoutes,
-  calculatorRoutes,
-  uploadRoutes,
-  cmsRoutes,
-  portfolioRoutes,
-  reviewRoutes,
-  blogRoutes;
+const routes = [
+  { path: "/api/auth", file: "./src/routes/auth" },
+  { path: "/api/leads", file: "./src/routes/leads" },
+  { path: "/api/referrals", file: "./src/routes/referrals" },
+  { path: "/api/calculator", file: "./src/routes/calculator" },
+  { path: "/api/upload", file: "./src/routes/upload" },
+  { path: "/api/cms", file: "./src/routes/cms" },
+  { path: "/api/portfolio", file: "./src/routes/portfolio" },
+  { path: "/api/reviews", file: "./src/routes/reviews" },
+  { path: "/api/blog", file: "./src/routes/blog" },
+];
 
-try {
-  authRoutes = require("./src/routes/auth");
-} catch (e) {
-  console.warn("⚠️  auth route missing:", e.message);
-}
-try {
-  leadRoutes = require("./src/routes/leads");
-} catch (e) {
-  console.warn("⚠️  leads route missing:", e.message);
-}
-try {
-  referralRoutes = require("./src/routes/referrals");
-} catch (e) {
-  console.warn("⚠️  referrals route missing:", e.message);
-}
-try {
-  calculatorRoutes = require("./src/routes/calculator");
-} catch (e) {
-  console.warn("⚠️  calculator route missing:", e.message);
-}
-try {
-  uploadRoutes = require("./src/routes/upload");
-} catch (e) {
-  console.warn("⚠️  upload route missing:", e.message);
-}
-try {
-  cmsRoutes = require("./src/routes/cms");
-} catch (e) {
-  console.warn("⚠️  cms route missing:", e.message);
-}
-try {
-  portfolioRoutes = require("./src/routes/portfolio");
-} catch (e) {
-  console.warn("⚠️  portfolio route missing:", e.message);
-}
-try {
-  reviewRoutes = require("./src/routes/reviews");
-} catch (e) {
-  console.warn("⚠️  reviews route missing:", e.message);
-}
-try {
-  blogRoutes = require("./src/routes/blog");
-} catch (e) {
-  console.warn("⚠️  blog route missing:", e.message);
-}
+routes.forEach(({ path, file }) => {
+  try {
+    const routeModule = require(file);
+    app.use(path, routeModule);
+    console.log(`✅ Registered: ${path}`);
+  } catch (e) {
+    console.warn(`⚠️  Skipped ${path}: ${e.message}`);
+  }
+});
 
 /* ═══════════════════════════════════════════════════════════════
-   ROUTES REGISTER
-═══════════════════════════════════════════════════════════════ */
-if (authRoutes) app.use("/api/auth", authRoutes);
-if (leadRoutes) app.use("/api/leads", leadRoutes);
-if (referralRoutes) app.use("/api/referrals", referralRoutes);
-if (calculatorRoutes) app.use("/api/calculator", calculatorRoutes);
-if (uploadRoutes) app.use("/api/upload", uploadRoutes);
-if (cmsRoutes) app.use("/api/cms", cmsRoutes);
-if (portfolioRoutes) app.use("/api/portfolio", portfolioRoutes);
-if (reviewRoutes) app.use("/api/reviews", reviewRoutes);
-if (blogRoutes) app.use("/api/blog", blogRoutes);
-
-/* ═══════════════════════════════════════════════════════════════
-   ROOT + HEALTH CHECK
+   ROOT + HEALTH
 ═══════════════════════════════════════════════════════════════ */
 app.get("/", (req, res) => {
   res.json({
@@ -178,6 +121,7 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 Available at: https://backend-zentroxtechnologies.onrender.com`);
     });
   } catch (err) {
     console.error("❌ Failed to start server:", err.message);
