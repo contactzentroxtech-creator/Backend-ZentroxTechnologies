@@ -1,37 +1,36 @@
 const express = require("express");
 const router = express.Router();
-const { protect, adminOnly } = require("../middleware/auth");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 /* ═══════════════════════════════════════════════════════════════
    IN-MEMORY CMS STORE
-   ⚠️ Production mein MongoDB use karo — abhi simple key-value
 ═══════════════════════════════════════════════════════════════ */
 let cmsStore = {
-  /* ─── Hero Section ─── */
+  /* Hero */
   hero_title: "Build. Grow. Scale with Zentrox Technologies",
   hero_subtitle:
     "From websites and mobile apps to AI-powered software and digital marketing — we deliver end-to-end solutions that move your business forward.",
   hero_image: "",
   hero_cta_text: "Start Your Project",
 
-  /* ─── About Section ─── */
+  /* About */
   about_title: "About Zentrox Technologies",
   about_description:
     "We are a team of passionate developers, designers, and marketers helping businesses grow with cutting-edge technology.",
   about_image: "",
 
-  /* ─── Services Section ─── */
+  /* Services */
   services_title: "Services That Drive Real Growth",
   services_subtitle:
     "From web and mobile to AI and marketing — we deliver end-to-end solutions under one roof.",
   services_image: "",
 
-  /* ─── Contact ─── */
+  /* Contact */
   contact_phone: "+91 89881 83513",
   contact_email: "contact.zentroxtech@gmail.com",
   contact_address: "Mohali & Chandigarh, Punjab, India",
 
-  /* ─── Social Links ─── */
+  /* Social */
   social_facebook: "",
   social_instagram: "",
   social_linkedin: "",
@@ -40,9 +39,7 @@ let cmsStore = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   GET /api/cms
-   Fetch all CMS settings — PUBLIC (no auth required)
-   Frontend Hero/About/Services fetch karega
+   GET /api/cms — Public (frontend Hero/About/Services fetch karta hai)
 ═══════════════════════════════════════════════════════════════ */
 router.get("/", (req, res) => {
   res.json({
@@ -52,11 +49,9 @@ router.get("/", (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   PUT /api/cms
-   Update CMS settings — Admin only
-   Body: { key1: "value1", key2: "value2", ... }
+   PUT /api/cms — Admin only
 ═══════════════════════════════════════════════════════════════ */
-router.put("/", protect, adminOnly, (req, res) => {
+router.put("/", protect, authorize("admin"), (req, res) => {
   try {
     const updates = req.body;
 
@@ -67,7 +62,6 @@ router.put("/", protect, adminOnly, (req, res) => {
       });
     }
 
-    // Merge updates
     cmsStore = { ...cmsStore, ...updates };
 
     res.json({
@@ -84,8 +78,7 @@ router.put("/", protect, adminOnly, (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   GET /api/cms/:key
-   Fetch single CMS value — PUBLIC
+   GET /api/cms/:key — Public
 ═══════════════════════════════════════════════════════════════ */
 router.get("/:key", (req, res) => {
   const { key } = req.params;
@@ -107,10 +100,9 @@ router.get("/:key", (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   PUT /api/cms/:key
-   Update single CMS value — Admin only
+   PUT /api/cms/:key — Admin only
 ═══════════════════════════════════════════════════════════════ */
-router.put("/:key", protect, adminOnly, (req, res) => {
+router.put("/:key", protect, authorize("admin"), (req, res) => {
   const { key } = req.params;
   const { value } = req.body;
 
