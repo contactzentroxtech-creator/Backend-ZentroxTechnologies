@@ -65,4 +65,21 @@ router.post("/", protect, authorize("admin"), async (req, res) => {
 router.patch("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     const popup = await Popup.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!popup) return res.status(404).json({ success: false,
+    if (!popup) return res.status(404).json({ success: false, message: "Not found" });
+    res.json({ success: true, data: popup });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* DELETE /api/popups/:id — Admin */
+router.delete("/:id", protect, authorize("admin"), async (req, res) => {
+  try {
+    await Popup.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Popup deleted" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+module.exports = router;
