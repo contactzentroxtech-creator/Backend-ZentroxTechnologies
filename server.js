@@ -20,14 +20,13 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 /* ═══════════════════════════════════════════════════════════════
-   CORS — Allow ALL origins (fix for all CORS errors)
-   ⚠️ Production mein specific origins list karo
+   CORS — Allow ALL origins
 ═══════════════════════════════════════════════════════════════ */
 app.use(
   cors({
     origin: true,
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
@@ -36,7 +35,7 @@ app.use(
 app.options("*", cors());
 
 /* ═══════════════════════════════════════════════════════════════
-   ROUTES IMPORT — Safe loading
+   ROUTES IMPORT — Safe loading with try/catch
 ═══════════════════════════════════════════════════════════════ */
 const routes = [
   { path: "/api/auth", file: "./src/routes/auth" },
@@ -48,6 +47,7 @@ const routes = [
   { path: "/api/portfolio", file: "./src/routes/portfolio" },
   { path: "/api/reviews", file: "./src/routes/reviews" },
   { path: "/api/blog", file: "./src/routes/blog" },
+  { path: "/api/popups", file: "./src/routes/popups" },
 ];
 
 routes.forEach(({ path, file }) => {
@@ -61,7 +61,7 @@ routes.forEach(({ path, file }) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   ROOT + HEALTH
+   ROOT + HEALTH CHECK
 ═══════════════════════════════════════════════════════════════ */
 app.get("/", (req, res) => {
   res.json({
@@ -121,7 +121,9 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌐 Available at: https://backend-zentroxtechnologies.onrender.com`);
+      console.log(
+        `🌐 Available at: https://backend-zentroxtechnologies.onrender.com`
+      );
     });
   } catch (err) {
     console.error("❌ Failed to start server:", err.message);
