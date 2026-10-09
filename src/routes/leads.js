@@ -1,169 +1,184 @@
 const express = require("express");
 const router = express.Router();
-const { body, validationResult } = require("express-validator");
-const { Lead, ReferralCode } = require("../models");
-const { protect, authorize } = require("../middleware/authMiddleware");
-const {
-  sendLeadNotification,
-  sendLeadAutoReply,
-} = require("../services/email/emailService");
+const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
-const validate = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty())
+/* ═══════════════════════════════════════════════════════════════
+   INLINE AUTH
+═══════════════════════════════════════════════════════════════ */
+const protect = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "No token provided." });
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
     return res
-      .status(400)
-      .json({ success: false, message: errors.array()[0].msg });
-  next();
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token." });
+  }
 };
 
-// POST /api/leads — public form submission
-router.post(
-  "/",
-  [
-    body("name").trim().notEmpty().withMessage("Name is required"),
-    body("phone").trim().notEmpty().withMessage("Phone is required"),
-    body("service").optional().trim(),
-    body("message").optional().trim().isLength({ max: 2000 }),
-  ],
-  validate,
-  async (req, res, next) => {
-    try {
-      const { referralCode: incomingCode, ...rest } = req.body;
-
-      const leadData = {
-        ...rest,
-        ipAddress: req.ip,
-        userAgent: req.get("User-Agent"),
-        source: req.body.source || "website",
-      };
-
-      // ─── Handle referral code ───────────────────
-      if (incomingCode && incomingCode.trim()) {
-        const referral = await ReferralCode.findOne({
-          code: incomingCode.trim().toUpperCase(),
-        });
-
-        if (referral) {
-          const check = referral.isValid();
-          if (check.valid) {
-            leadData.referralCode = referral.code;
-            leadData.referralOwner = referral.ownerName;
-            leadData.discountPercent = referral.discountPercent;
-
-            referral.usedCount += 1;
-            referral.usedBy.push({
-              name: req.body.name,
-              email: req.body.email || "",
-              phone: req.body.phone,
-              projectType: req.body.projectType || leadData.service || "",
-              baseEstimate: req.body.baseEstimate || 0,
-              finalEstimate: req.body.finalEstimate || 0,
-              usedAt: new Date(),
-            });
-            await referral.save();
-          }
-        }
-      }
-
-      // ─── Save estimate fields ───────────────────
-      if (req.body.baseEstimate) leadData.baseEstimate = req.body.baseEstimate;
-      if (req.body.finalEstimate)
-        leadData.finalEstimate = req.body.finalEstimate;
-      if (req.body.projectType) leadData.projectType = req.body.projectType;
-      if (req.body.projectDetails)
-        leadData.projectDetails = req.body.projectDetails;
-
-      const lead = await Lead.create(leadData);
-
-      sendLeadNotification(lead).catch(() => {});
-      if (lead.email) sendLeadAutoReply(lead).catch(() => {});
-
-      res.status(201).json({
-        success: true,
-        message: "Thank you! We will contact you within 24 hours.",
-        leadId: lead._id,
-      });
-    } catch (err) {
-      next(err);
+const authorize =
+  (...roles) =>
+  (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Access denied." });
     }
-  }
+    next();
+  };
+
+/* ═══════════════════════════════════════════════════════════════
+   LEAD MODEL — inline
+═══════════════════════════════════════════════════════════════ */
+const leadSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: { type: String, required: true },
+    service: { type: String, default: "" },
+    message: { type: String, default: "" },
+    source: { type: String, default: "website" },
+    status: {
+      type: String,
+      default: "new",
+      enum: ["new", "contacted", "qualified", "converted", "lost"],
+    },
+    priority: { type: String, default: "medium" },
+    notes: { type: String, default: "" },
+    referralCode: { type: String, default: "" },
+    baseEstimate: { type: Number, default: 0 },
+    finalEstimate: { type: Number, default: 0 },
+    projectType: { type: String, default: "" },
+    projectDetails: { type: mongoose.Schema.Types.Mixed },
+  },
+  { timestamps: true }
 );
 
-// GET /api/leads — admin: get all leads
-router.get("/", protect, authorize("admin"), async (req, res, next) => {
+const Lead = mongoose.models.Lead || mongoose.model("Lead", leadSchema);
+
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC — Create Lead (Contact form)
+═══════════════════════════════════════════════════════════════ */
+router.post("/", async (req, res) => {
   try {
-    const { status, priority, page = 1, limit = 20, search } = req.query;
-    const filter = {};
-    if (status) filter.status = status;
-    if (priority) filter.priority = priority;
-    if (search)
-      filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-      ];
-    const total = await Lead.countDocuments(filter);
-    const leads = await Lead.find(filter)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
-    res.json({
+    const { name, email, phone } = req.body;
+    if (!name || !email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, and phone are required",
+      });
+    }
+    const lead = await Lead.create(req.body);
+    res.status(201).json({
       success: true,
-      data: leads,
-      total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
+      data: lead,
+      message: "Lead saved successfully",
     });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// GET /api/leads/:id
-router.get("/:id", protect, authorize("admin"), async (req, res, next) => {
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN — Get all leads
+═══════════════════════════════════════════════════════════════ */
+router.get("/", protect, authorize("admin"), async (req, res) => {
+  try {
+    const { status, priority, source, search } = req.query;
+    const filter = {};
+    if (status && status !== "all") filter.status = status;
+    if (priority && priority !== "all") filter.priority = priority;
+    if (source && source !== "all") filter.source = source;
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { service: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const leads = await Lead.find(filter).sort({ createdAt: -1 });
+    res.json({ success: true, data: leads, total: leads.length });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN — Get single lead
+═══════════════════════════════════════════════════════════════ */
+router.get("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     const lead = await Lead.findById(req.params.id);
-    if (!lead)
-      return res
-        .status(404)
-        .json({ success: false, message: "Lead not found." });
+    if (!lead) {
+      return res.status(404).json({ success: false, message: "Lead not found" });
+    }
     res.json({ success: true, data: lead });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// PATCH /api/leads/:id — update status, add note
-router.patch("/:id", protect, authorize("admin"), async (req, res, next) => {
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN — Update lead
+═══════════════════════════════════════════════════════════════ */
+router.patch("/:id", protect, authorize("admin"), async (req, res) => {
   try {
-    const { status, priority, assignedTo, followUpDate, note } = req.body;
-    const lead = await Lead.findById(req.params.id);
-    if (!lead)
-      return res
-        .status(404)
-        .json({ success: false, message: "Lead not found." });
-
-    if (status) lead.status = status;
-    if (priority) lead.priority = priority;
-    if (assignedTo) lead.assignedTo = assignedTo;
-    if (followUpDate) lead.followUpDate = followUpDate;
-    if (note) lead.notes.push({ text: note, addedBy: req.user.name });
-
-    await lead.save();
-    res.json({ success: true, data: lead, message: "Lead updated." });
+    const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+    if (!lead) {
+      return res.status(404).json({ success: false, message: "Lead not found" });
+    }
+    res.json({ success: true, data: lead, message: "Lead updated" });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// DELETE /api/leads/:id
-router.delete("/:id", protect, authorize("admin"), async (req, res, next) => {
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN — Delete lead
+═══════════════════════════════════════════════════════════════ */
+router.delete("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     await Lead.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Lead deleted." });
+    res.json({ success: true, message: "Lead deleted" });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN — Stats for Dashboard
+═══════════════════════════════════════════════════════════════ */
+router.get("/stats/overview", protect, authorize("admin"), async (req, res) => {
+  try {
+    const totalLeads = await Lead.countDocuments();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const leadsToday = await Lead.countDocuments({ createdAt: { $gte: today } });
+    const newLeads = await Lead.countDocuments({ status: "new" });
+    const converted = await Lead.countDocuments({ status: "converted" });
+
+    res.json({
+      success: true,
+      data: {
+        totalLeads,
+        leadsToday,
+        newLeads,
+        converted,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
