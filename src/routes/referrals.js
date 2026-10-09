@@ -1,230 +1,153 @@
 const express = require("express");
 const router = express.Router();
-const { ReferralCode } = require("../models");
-const { protect, authorize } = require("../middleware/authMiddleware");
+const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 
 /* ═══════════════════════════════════════════════════════════════
-   PUBLIC — VERIFY REFERRAL CODE
+   INLINE AUTH
 ═══════════════════════════════════════════════════════════════ */
-router.post("/verify", async (req, res, next) => {
+const protect = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, message: "No token provided." });
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ success: false, message: "Invalid or expired token." });
+  }
+};
+
+const authorize = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.user?.role)) {
+    return res.status(403).json({ success: false, message: "Access denied." });
+  }
+  next();
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   REFERRAL MODEL — inline
+═══════════════════════════════════════════════════════════════ */
+const referralSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true, unique: true, uppercase: true },
+    ownerName: { type: String, default: "" },
+    ownerEmail: { type: String, default: "" },
+    discountPercent: { type: Number, default: 10 },
+    maxUses: { type: Number, default: 100 },
+    usedCount: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
+    expiresAt: { type: Date },
+  },
+  { timestamps: true }
+);
+
+const Referral = mongoose.models.Referral || mongoose.model("Referral", referralSchema);
+
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC — Verify a referral code
+═══════════════════════════════════════════════════════════════ */
+router.post("/verify", async (req, res) => {
   try {
     const { code } = req.body;
-
-    if (!code || !code.trim()) {
-      return res.status(400).json({
-        success: false,
-        valid: false,
-        message: "Please enter a referral code",
-      });
+    if (!code) {
+      return res.status(400).json({ valid: false, message: "Code required" });
     }
-
-    const referral = await ReferralCode.findOne({
-      code: code.trim().toUpperCase(),
+    const referral = await Referral.findOne({
+      code: code.toUpperCase(),
+      isActive: true,
     });
 
     if (!referral) {
-      return res.status(404).json({
-        success: false,
-        valid: false,
-        message: "Invalid referral code",
-      });
+      return res.json({ valid: false, message: "Invalid referral code" });
     }
-
-    const check = referral.isValid();
-    if (!check.valid) {
-      return res.status(400).json({
-        success: false,
-        valid: false,
-        message: check.reason,
-      });
+    if (referral.usedCount >= referral.maxUses) {
+      return res.json({ valid: false, message: "Code usage limit reached" });
+    }
+    if (referral.expiresAt && referral.expiresAt < new Date()) {
+      return res.json({ valid: false, message: "Code expired" });
     }
 
     res.json({
-      success: true,
       valid: true,
       discountPercent: referral.discountPercent,
-      ownerName: referral.ownerName,
-      message: `${referral.discountPercent}% discount applied! Referred by ${referral.ownerName}`,
+      code: referral.code,
+      message: `${referral.discountPercent}% discount applied`,
     });
   } catch (err) {
-    next(err);
+    res.status(500).json({ valid: false, message: err.message });
   }
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   ADMIN — GET ALL
+   ADMIN — Get all referrals
 ═══════════════════════════════════════════════════════════════ */
-router.get("/", protect, authorize("admin"), async (req, res, next) => {
+router.get("/", protect, authorize("admin"), async (req, res) => {
   try {
-    const { status, search, page = 1, limit = 50 } = req.query;
-    const filter = {};
-
-    if (status === "active") filter.isActive = true;
-    if (status === "inactive") filter.isActive = false;
-    if (status === "used") {
-      filter.$expr = { $gte: ["$usedCount", "$maxUses"] };
-    }
-    if (search) {
-      filter.$or = [
-        { code: { $regex: search, $options: "i" } },
-        { ownerName: { $regex: search, $options: "i" } },
-        { ownerPhone: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    const total = await ReferralCode.countDocuments(filter);
-    const codes = await ReferralCode.find(filter)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
-
-    res.json({
-      success: true,
-      data: codes,
-      total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
-    });
+    const referrals = await Referral.find().sort({ createdAt: -1 });
+    res.json({ success: true, data: referrals });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   ADMIN — GET ONE
+   ADMIN — Create referral
 ═══════════════════════════════════════════════════════════════ */
-router.get("/:id", protect, authorize("admin"), async (req, res, next) => {
+router.post("/", protect, authorize("admin"), async (req, res) => {
   try {
-    const referral = await ReferralCode.findById(req.params.id);
-    if (!referral) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Referral code not found" });
+    const { code, discountPercent, maxUses, expiresAt, ownerName, ownerEmail } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, message: "Code required" });
     }
+
+    const existing = await Referral.findOne({ code: code.toUpperCase() });
+    if (existing) {
+      return res.status(400).json({ success: false, message: "Code already exists" });
+    }
+
+    const referral = await Referral.create({
+      code: code.toUpperCase(),
+      discountPercent: discountPercent || 10,
+      maxUses: maxUses || 100,
+      expiresAt: expiresAt || undefined,
+      ownerName: ownerName || "",
+      ownerEmail: ownerEmail || "",
+    });
+
+    res.status(201).json({ success: true, data: referral });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN — Update referral
+═══════════════════════════════════════════════════════════════ */
+router.patch("/:id", protect, authorize("admin"), async (req, res) => {
+  try {
+    const referral = await Referral.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+    if (!referral) return res.status(404).json({ success: false, message: "Not found" });
     res.json({ success: true, data: referral });
   } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   ADMIN — CREATE
+   ADMIN — Delete referral
 ═══════════════════════════════════════════════════════════════ */
-router.post("/", protect, authorize("admin"), async (req, res, next) => {
+router.delete("/:id", protect, authorize("admin"), async (req, res) => {
   try {
-    const {
-      code,
-      ownerName,
-      ownerPhone,
-      ownerEmail,
-      ownerRole,
-      discountPercent,
-      maxUses,
-      expiresAt,
-      notes,
-    } = req.body;
-
-    if (!code || !ownerName) {
-      return res.status(400).json({
-        success: false,
-        message: "Code and Owner Name are required",
-      });
-    }
-
-    const existing = await ReferralCode.findOne({
-      code: code.trim().toUpperCase(),
-    });
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: "This code already exists. Please use a different code.",
-      });
-    }
-
-    const referral = await ReferralCode.create({
-      code: code.trim().toUpperCase(),
-      ownerName: ownerName.trim(),
-      ownerPhone: ownerPhone || "",
-      ownerEmail: ownerEmail || "",
-      ownerRole: ownerRole || "sales",
-      discountPercent: discountPercent || 20,
-      maxUses: maxUses || 1,
-      expiresAt: expiresAt || null,
-      notes: notes || "",
-      createdBy: req.user._id,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: referral,
-      message: "Referral code created successfully",
-    });
+    await Referral.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Referral deleted" });
   } catch (err) {
-    next(err);
-  }
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   ADMIN — UPDATE
-═══════════════════════════════════════════════════════════════ */
-router.put("/:id", protect, authorize("admin"), async (req, res, next) => {
-  try {
-    const referral = await ReferralCode.findById(req.params.id);
-    if (!referral) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Referral code not found" });
-    }
-
-    const {
-      ownerName,
-      ownerPhone,
-      ownerEmail,
-      ownerRole,
-      discountPercent,
-      maxUses,
-      isActive,
-      expiresAt,
-      notes,
-    } = req.body;
-
-    if (ownerName) referral.ownerName = ownerName;
-    if (ownerPhone !== undefined) referral.ownerPhone = ownerPhone;
-    if (ownerEmail !== undefined) referral.ownerEmail = ownerEmail;
-    if (ownerRole) referral.ownerRole = ownerRole;
-    if (discountPercent !== undefined)
-      referral.discountPercent = discountPercent;
-    if (maxUses !== undefined) referral.maxUses = maxUses;
-    if (isActive !== undefined) referral.isActive = isActive;
-    if (expiresAt !== undefined) referral.expiresAt = expiresAt;
-    if (notes !== undefined) referral.notes = notes;
-
-    await referral.save();
-
-    res.json({
-      success: true,
-      data: referral,
-      message: "Referral code updated",
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   ADMIN — DELETE
-═══════════════════════════════════════════════════════════════ */
-router.delete("/:id", protect, authorize("admin"), async (req, res, next) => {
-  try {
-    const referral = await ReferralCode.findByIdAndDelete(req.params.id);
-    if (!referral) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Referral code not found" });
-    }
-    res.json({ success: true, message: "Referral code deleted" });
-  } catch (err) {
-    next(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
