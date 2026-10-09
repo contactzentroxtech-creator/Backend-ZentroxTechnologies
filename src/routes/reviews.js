@@ -42,9 +42,7 @@ const reviewSchema = new mongoose.Schema(
 
 const Review = mongoose.models.Review || mongoose.model("Review", reviewSchema);
 
-/* ═══════════════════════════════════════════════════════════════
-   PUBLIC — Get approved reviews
-═══════════════════════════════════════════════════════════════ */
+/* PUBLIC — Get approved reviews */
 router.get("/", async (req, res) => {
   try {
     const { featured, limit } = req.query;
@@ -61,9 +59,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   PUBLIC — Submit review
-═══════════════════════════════════════════════════════════════ */
+/* PUBLIC — Submit review */
 router.post("/", async (req, res) => {
   try {
     const { name, rating, message } = req.body;
@@ -84,9 +80,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   ADMIN — Get all (including pending)
-═══════════════════════════════════════════════════════════════ */
+/* ADMIN — Get all */
 router.get("/admin/all", protect, authorize("admin"), async (req, res) => {
   try {
     const reviews = await Review.find().sort({ createdAt: -1 });
@@ -96,9 +90,7 @@ router.get("/admin/all", protect, authorize("admin"), async (req, res) => {
   }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   ADMIN — Approve
-═══════════════════════════════════════════════════════════════ */
+/* ADMIN — Approve */
 router.patch("/:id/approve", protect, authorize("admin"), async (req, res) => {
   try {
     const review = await Review.findByIdAndUpdate(
@@ -113,9 +105,7 @@ router.patch("/:id/approve", protect, authorize("admin"), async (req, res) => {
   }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   ADMIN — Update
-═══════════════════════════════════════════════════════════════ */
+/* ADMIN — Update */
 router.patch("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     const review = await Review.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -126,9 +116,7 @@ router.patch("/:id", protect, authorize("admin"), async (req, res) => {
   }
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   ADMIN — Delete
-═══════════════════════════════════════════════════════════════ */
+/* ADMIN — Delete */
 router.delete("/:id", protect, authorize("admin"), async (req, res) => {
   try {
     await Review.findByIdAndDelete(req.params.id);
