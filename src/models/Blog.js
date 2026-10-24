@@ -1,48 +1,34 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
-const CommentSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  userName: { type: String, required: true },
-  text: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-});
-
-const MediaSchema = new mongoose.Schema({
-  url: { type: String, required: true },
-  type: {
-    type: String,
-    enum: ["image", "video", "document", "other"],
-    default: "image",
-  },
-  caption: { type: String, default: "" },
-});
-
-const BlogSchema = new mongoose.Schema(
+const blogSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },
-    slug: { type: String, unique: true },
-    excerpt: { type: String },
-    content: { type: String, required: true },
-    category: { type: String },
+    title: { type: String, required: true, trim: true },
+    slug: { type: String, required: true, unique: true, lowercase: true },
+    excerpt: { type: String, default: "" },
+    content: { type: String, required: true },        // HTML ya markdown
+    coverImage: { type: String, default: "" },         // Cloudinary URL
+    category: { type: String, default: "General" },
     tags: [{ type: String }],
-    thumbnail: { type: String },
-    authorName: { type: String },
-    author: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    isPublished: { type: Boolean, default: false },
+    author: { type: String, default: "Zentrox Team" },
+    readTime: { type: Number, default: 5 },            // minutes
+    published: { type: Boolean, default: false },
     featured: { type: Boolean, default: false },
-    metaTitle: { type: String },
-    metaDesc: { type: String },
-    viewCount: { type: Number, default: 0 },
-    readTime: { type: Number, default: 0 },
-    publishedAt: { type: Date },
-
-    // New Additions: Multi-media, Interactions, and Feedbacks
-    media: [MediaSchema],
-    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    dislikes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    comments: [CommentSchema],
+    views: { type: Number, default: 0 },
+    metaTitle: { type: String, default: "" },
+    metaDescription: { type: String, default: "" },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Blog", BlogSchema);
+// Auto slug generate agar missing
+blogSchema.pre("validate", function (next) {
+  if (!this.slug && this.title) {
+    this.slug = this.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+  }
+  next();
+});
+
+export default mongoose.models.Blog || mongoose.model("Blog", blogSchema);
