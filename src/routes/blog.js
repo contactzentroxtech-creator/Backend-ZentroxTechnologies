@@ -1,62 +1,150 @@
-import express from "express";
-import Blog from "../models/Blog.js";
-import { protect, adminOnly } from "../middleware/authMiddleware.js";
-
+const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
+const { Blog } = require("../models/index.js");
 
-/* ───────── PUBLIC ───────── */
+/* ═══════════════════════════════════════════════════════════════
+   INLINE AUTH — same pattern jo upload.js mein hai
+═══════════════════════════════════════════════════════════════ */
+const protect = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "No token provided." });
+    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token." });
+  }
+};
 
-// GET /api/blog  → published list (pagination + search + category)
+const adminOnly = (req, res, next) => {
+  if (req.user?.role !== "admin") {
+    return res
+      .status(403)
+      .json({ success: false, message: "Admin access required" });
+  }
+  next();
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC: GET /api/blog
+═══════════════════════════════════════════════════════════════ */
 router.get("/", async (req, res) => {
   try {
-    const { page = 1, limit = 9, category, search } = req.query;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Number(req.query.limit) || 9);
+    const { category, search, tag } = req.query;
+
     const query = { published: true };
-
     if (category && category !== "All") query.category = category;
-    if (search) query.title = { $regex: search, $options: "i" };
+    if (tag) query.tags = tag;
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { excerpt: { $regex: search, $options: "i" } },
+        { tags: { $regex: search, $options: "i" } },
+      ];
+    }
 
-    const total = await Blog.countDocuments(query);
-    const blogs = await Blog.find(query)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-      .select("-content"); // list mein full content nahi chahiye
+    const [blogs, total] = await Promise.all([
+      Blog.find(query)
+        .sort({ featured: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select("-content -__v"),
+      Blog.countDocuments(query),
+    ]);
 
     res.json({
       success: true,
       data: blogs,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) || 1 },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// GET /api/blog/featured
-router.get("/featured", async (_req, res) => {
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC: GET /api/blog/featured
+═══════════════════════════════════════════════════════════════ */
+router.get("/featured", async (req, res) => {
   try {
     const blogs = await Blog.find({ published: true, featured: true })
       .sort({ createdAt: -1 })
-      .limit(3);
+      .limit(3)
+      .select("-content");
     res.json({ success: true, data: blogs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// GET /api/blog/:slug  → single blog + view count
-router.get("/:slug", async (req, res) => {
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC: GET /api/blog/categories
+═══════════════════════════════════════════════════════════════ */
+router.get("/categories", async (req, res) => {
   try {
-    const blog = await Blog.findOneAndUpdate(
-      { slug: req.params.slug, published: true },
-      { $inc: { views: 1 } },
-      { new: true }
-    );
+    const categories = await Blog.aggregate([
+      { $match: { published: true } },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    res.json({
+      success: true,
+      data: categories.map((c) => ({ name: c._id, count: c.count })),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN: GET /api/blog/admin/all
+   ⚠️ Yeh /:slug se PEHLE hona chahiye
+═══════════════════════════════════════════════════════════════ */
+router.get("/admin/all", protect, adminOnly, async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Number(req.query.limit) || 20);
+
+    const [blogs, total] = await Promise.all([
+      Blog.find()
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select("-content -__v"),
+      Blog.countDocuments(),
+    ]);
+
+    res.json({
+      success: true,
+      data: blogs,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) || 1 },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN: GET /api/blog/admin/:id
+═══════════════════════════════════════════════════════════════ */
+router.get("/admin/:id", protect, adminOnly, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    const blog = await Blog.findById(req.params.id);
     if (!blog)
       return res.status(404).json({ success: false, message: "Blog not found" });
     res.json({ success: true, data: blog });
@@ -65,35 +153,141 @@ router.get("/:slug", async (req, res) => {
   }
 });
 
-/* ───────── ADMIN ───────── */
-
-router.post("/", protect, adminOnly, async (req, res) => {
+/* ═══════════════════════════════════════════════════════════════
+   PUBLIC: GET /api/blog/:slug  (LAST — catch-all)
+═══════════════════════════════════════════════════════════════ */
+router.get("/:slug", async (req, res) => {
   try {
-    const blog = await Blog.create(req.body);
-    res.status(201).json({ success: true, data: blog });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+    const blog = await Blog.findOneAndUpdate(
+      { slug: req.params.slug, published: true },
+      { $inc: { views: 1 } },
+      { new: true }
+    ).select("-__v");
 
-router.put("/:id", protect, adminOnly, async (req, res) => {
-  try {
-    const blog = await Blog.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    res.json({ success: true, data: blog });
-  } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
-  }
-});
+    if (!blog)
+      return res.status(404).json({ success: false, message: "Blog not found" });
 
-router.delete("/:id", protect, adminOnly, async (req, res) => {
-  try {
-    await Blog.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Deleted" });
+    const related = await Blog.find({
+      published: true,
+      category: blog.category,
+      _id: { $ne: blog._id },
+    })
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .select("-content");
+
+    res.json({ success: true, data: blog, related });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-export default router;
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN: POST /api/blog  (CREATE — upload yahan hota hai)
+═══════════════════════════════════════════════════════════════ */
+router.post("/", protect, adminOnly, async (req, res) => {
+  try {
+    const {
+      title,
+      content,
+      excerpt,
+      coverImage,
+      coverImagePublicId,
+      category,
+      tags,
+      author,
+      readTime,
+      published,
+      featured,
+      metaTitle,
+      metaDescription,
+      slug,
+    } = req.body;
+
+    if (!title || !content) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Title and content required" });
+    }
+
+    // Auto slug agar missing
+    let finalSlug = slug;
+    if (!finalSlug) {
+      finalSlug = title
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    }
+
+    // Slug duplicate check
+    const exists = await Blog.findOne({ slug: finalSlug });
+    if (exists) finalSlug = `${finalSlug}-${Date.now().toString().slice(-5)}`;
+
+    const blog = await Blog.create({
+      title,
+      slug: finalSlug,
+      content,
+      excerpt: excerpt || "",
+      coverImage: coverImage || "",
+      coverImagePublicId: coverImagePublicId || "",
+      category: category || "General",
+      tags: Array.isArray(tags) ? tags : [],
+      author: author || "Zentrox Team",
+      readTime: readTime || 5,
+      published: published !== undefined ? !!published : true,
+      featured: !!featured,
+      metaTitle: metaTitle || "",
+      metaDescription: metaDescription || "",
+    });
+
+    res.status(201).json({
+      success: true,
+      data: blog,
+      message: "Blog created successfully",
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN: PUT /api/blog/:id  (UPDATE)
+═══════════════════════════════════════════════════════════════ */
+router.put("/:id", protect, adminOnly, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    const blog = await Blog.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    if (!blog)
+      return res.status(404).json({ success: false, message: "Blog not found" });
+    res.json({ success: true, data: blog, message: "Blog updated" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN: DELETE /api/blog/:id
+═══════════════════════════════════════════════════════════════ */
+router.delete("/:id", protect, adminOnly, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+    const blog = await Blog.findByIdAndDelete(req.params.id);
+    if (!blog)
+      return res.status(404).json({ success: false, message: "Blog not found" });
+    res.json({ success: true, message: "Blog deleted" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+module.exports = router;
