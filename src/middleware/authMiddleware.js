@@ -1,134 +1,34 @@
-const express = require("express");
-const router = express.Router();
-const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const { protect, authorize } = require("../middleware/authMiddleware");
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
-/* ═══════════════════════════════════════════════════════════════
-   CLOUDINARY CONFIG
-═══════════════════════════════════════════════════════════════ */
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   MULTER + CLOUDINARY STORAGE
-═══════════════════════════════════════════════════════════════ */
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "zentrox-media",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "gif", "svg"],
-    transformation: [{ quality: "auto", fetch_format: "auto" }],
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed"), false);
+// Token verify — logged-in user
+export const protect = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization?.startsWith("Bearer")) {
+      token = req.headers.authorization.split(" ")[1];
     }
-  },
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   IN-MEMORY MEDIA STORE
-═══════════════════════════════════════════════════════════════ */
-let mediaStore = [];
-
-/* ═══════════════════════════════════════════════════════════════
-   POST /api/upload — Upload image (admin only)
-═══════════════════════════════════════════════════════════════ */
-router.post(
-  "/",
-  protect,
-  authorize("admin"),
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: "No file uploaded",
-        });
-      }
-
-      const item = {
-        url: req.file.path,
-        publicId: req.file.filename,
-        originalName: req.file.originalname,
-        size: req.file.size,
-        format: req.file.format || req.file.mimetype?.split("/")[1] || "jpg",
-        width: req.file.width,
-        height: req.file.height,
-        createdAt: new Date().toISOString(),
-      };
-
-      mediaStore.unshift(item);
-
-      res.json({
-        success: true,
-        data: item,
-        message: "Image uploaded successfully",
-      });
-    } catch (err) {
-      res.status(500).json({
-        success: false,
-        message: err.message || "Upload failed",
-      });
+    if (!token) {
+      return res.status(401).json({ success: false, message: "Not authorized" });
     }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select("-password");
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    res.status(401).json({ success: false, message: "Invalid token" });
   }
-);
+};
 
-/* ═══════════════════════════════════════════════════════════════
-   GET /api/upload — List media (admin only)
-═══════════════════════════════════════════════════════════════ */
-router.get("/", protect, authorize("admin"), (req, res) => {
-  res.json({
-    success: true,
-    data: mediaStore,
-  });
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   DELETE /api/upload/:publicId — Delete (admin only)
-═══════════════════════════════════════════════════════════════ */
-router.delete(
-  "/:publicId(*)",
-  protect,
-  authorize("admin"),
-  async (req, res) => {
-    try {
-      const { publicId } = req.params;
-
-      if (!publicId) {
-        return res.status(400).json({
-          success: false,
-          message: "publicId is required",
-        });
-      }
-
-      await cloudinary.uploader.destroy(publicId);
-      mediaStore = mediaStore.filter((m) => m.publicId !== publicId);
-
-      res.json({
-        success: true,
-        message: "Image deleted successfully",
-      });
-    } catch (err) {
-      res.status(500).json({
-        success: false,
-        message: err.message || "Delete failed",
-      });
-    }
+// Admin-only check
+export const adminOnly = (req, res, next) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ success: false, message: "Admin access required" });
   }
-);
-
-module.exports = router;
+  next();
+};
