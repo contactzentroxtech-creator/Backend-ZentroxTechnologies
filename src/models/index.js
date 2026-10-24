@@ -7,13 +7,7 @@ import bcrypt from "bcryptjs";
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 80 },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true, minlength: 6, select: false },
     phone: { type: String, trim: true },
     avatar: { type: String, default: "" },
@@ -61,20 +55,10 @@ const leadSchema = new mongoose.Schema(
     budget: String,
     message: String,
     source: { type: String, default: "website" },
-    status: {
-      type: String,
-      enum: ["new", "contacted", "qualified", "proposal", "won", "lost"],
-      default: "new",
-    },
+    status: { type: String, enum: ["new", "contacted", "qualified", "proposal", "won", "lost"], default: "new" },
     priority: { type: String, enum: ["low", "medium", "high"], default: "medium" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    notes: [
-      {
-        text: String,
-        addedBy: String,
-        addedAt: { type: Date, default: Date.now },
-      },
-    ],
+    notes: [{ text: String, addedBy: String, addedAt: { type: Date, default: Date.now } }],
     followUpDate: Date,
     city: String,
     businessType: String,
@@ -96,7 +80,7 @@ const leadSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   BLOG MODEL — ⭐ FIXED (frontend ke saath match)
+   BLOG MODEL (⭐ FIXED — Frontend ke hisaab se)
 ═══════════════════════════════════════════════════════════════ */
 const blogSchema = new mongoose.Schema(
   {
@@ -104,15 +88,23 @@ const blogSchema = new mongoose.Schema(
     slug: { type: String, required: true, unique: true, lowercase: true },
     excerpt: { type: String, default: "" },
     content: { type: String, required: true },
+    
+    // Frontend image ke liye `coverImage` use karta hai
     coverImage: { type: String, default: "" },
     coverImagePublicId: { type: String, default: "" },
+    
     category: { type: String, default: "General" },
     tags: [{ type: String }],
     author: { type: String, default: "Zentrox Team" },
     readTime: { type: Number, default: 5 },
+    
+    // Frontend publish status ke liye `published` use karta hai
     published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
+    
+    // Frontend views count ke liye `views` use karta hai
     views: { type: Number, default: 0 },
+    
     metaTitle: { type: String, default: "" },
     metaDescription: { type: String, default: "" },
   },
@@ -179,10 +171,7 @@ const siteSettingsSchema = new mongoose.Schema(
   {
     key: { type: String, unique: true, required: true },
     value: mongoose.Schema.Types.Mixed,
-    type: {
-      type: String,
-      enum: ["text", "image", "json", "boolean", "number", "color"],
-    },
+    type: { type: String, enum: ["text", "image", "json", "boolean", "number", "color"] },
     label: String,
     group: String,
   },
@@ -195,17 +184,7 @@ const siteSettingsSchema = new mongoose.Schema(
 const popupSchema = new mongoose.Schema(
   {
     name: String,
-    type: {
-      type: String,
-      enum: [
-        "exit-intent",
-        "lead",
-        "newsletter",
-        "discount",
-        "whatsapp",
-        "announcement",
-      ],
-    },
+    type: { type: String, enum: ["exit-intent", "lead", "newsletter", "discount", "whatsapp", "announcement"] },
     title: String,
     content: String,
     ctaText: String,
@@ -251,11 +230,7 @@ const paymentSchema = new mongoose.Schema(
     paymentId: String,
     amount: Number,
     currency: { type: String, default: "INR" },
-    status: {
-      type: String,
-      enum: ["created", "paid", "failed", "refunded"],
-      default: "created",
-    },
+    status: { type: String, enum: ["created", "paid", "failed", "refunded"], default: "created" },
     metadata: mongoose.Schema.Types.Mixed,
   },
   { timestamps: true }
@@ -270,25 +245,11 @@ const referralCodeSchema = new mongoose.Schema(
     ownerName: { type: String, required: true, trim: true },
     ownerPhone: { type: String, trim: true },
     ownerEmail: { type: String, trim: true, lowercase: true },
-    ownerRole: {
-      type: String,
-      enum: ["sales", "partner", "affiliate", "employee", "other"],
-      default: "sales",
-    },
+    ownerRole: { type: String, enum: ["sales", "partner", "affiliate", "employee", "other"], default: "sales" },
     discountPercent: { type: Number, default: 20, min: 0, max: 50 },
     maxUses: { type: Number, default: 1, min: 1 },
     usedCount: { type: Number, default: 0 },
-    usedBy: [
-      {
-        name: String,
-        email: String,
-        phone: String,
-        projectType: String,
-        baseEstimate: Number,
-        finalEstimate: Number,
-        usedAt: { type: Date, default: Date.now },
-      },
-    ],
+    usedBy: [{ name: String, email: String, phone: String, projectType: String, baseEstimate: Number, finalEstimate: Number, usedAt: { type: Date, default: Date.now } }],
     isActive: { type: Boolean, default: true },
     expiresAt: { type: Date },
     notes: String,
@@ -299,55 +260,21 @@ const referralCodeSchema = new mongoose.Schema(
 
 referralCodeSchema.methods.isValid = function () {
   if (!this.isActive) return { valid: false, reason: "Code is inactive" };
-  if (this.usedCount >= this.maxUses)
-    return { valid: false, reason: "Code usage limit reached" };
-  if (this.expiresAt && new Date() > this.expiresAt)
-    return { valid: false, reason: "Code has expired" };
+  if (this.usedCount >= this.maxUses) return { valid: false, reason: "Code usage limit reached" };
+  if (this.expiresAt && new Date() > this.expiresAt) return { valid: false, reason: "Code has expired" };
   return { valid: true };
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   EXPORTS (named — server ke hisaab se)
+   EXPORTS (Named exports taaki routes mein import ho sake)
 ═══════════════════════════════════════════════════════════════ */
-const User = mongoose.models.User || mongoose.model("User", userSchema);
-const Lead = mongoose.models.Lead || mongoose.model("Lead", leadSchema);
-const Blog = mongoose.models.Blog || mongoose.model("Blog", blogSchema);
-const Portfolio =
-  mongoose.models.Portfolio || mongoose.model("Portfolio", portfolioSchema);
-const Review = mongoose.models.Review || mongoose.model("Review", reviewSchema);
-const SiteSetting =
-  mongoose.models.SiteSetting || mongoose.model("SiteSetting", siteSettingsSchema);
-const Popup = mongoose.models.Popup || mongoose.model("Popup", popupSchema);
-const Analytics =
-  mongoose.models.Analytics || mongoose.model("Analytics", analyticsSchema);
-const Payment =
-  mongoose.models.Payment || mongoose.model("Payment", paymentSchema);
-const ReferralCode =
-  mongoose.models.ReferralCode || mongoose.model("ReferralCode", referralCodeSchema);
-
-export {
-  User,
-  Lead,
-  Blog,
-  Portfolio,
-  Review,
-  SiteSetting,
-  Popup,
-  Analytics,
-  Payment,
-  ReferralCode,
-};
-
-// Default export bhi de do — compatibility ke liye
-export default {
-  User,
-  Lead,
-  Blog,
-  Portfolio,
-  Review,
-  SiteSetting,
-  Popup,
-  Analytics,
-  Payment,
-  ReferralCode,
-};
+export const User = mongoose.models.User || mongoose.model("User", userSchema);
+export const Lead = mongoose.models.Lead || mongoose.model("Lead", leadSchema);
+export const Blog = mongoose.models.Blog || mongoose.model("Blog", blogSchema);
+export const Portfolio = mongoose.models.Portfolio || mongoose.model("Portfolio", portfolioSchema);
+export const Review = mongoose.models.Review || mongoose.model("Review", reviewSchema);
+export const SiteSetting = mongoose.models.SiteSetting || mongoose.model("SiteSetting", siteSettingsSchema);
+export const Popup = mongoose.models.Popup || mongoose.model("Popup", popupSchema);
+export const Analytics = mongoose.models.Analytics || mongoose.model("Analytics", analyticsSchema);
+export const Payment = mongoose.models.Payment || mongoose.model("Payment", paymentSchema);
+export const ReferralCode = mongoose.models.ReferralCode || mongoose.model("ReferralCode", referralCodeSchema);
