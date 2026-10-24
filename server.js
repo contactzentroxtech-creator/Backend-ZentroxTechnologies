@@ -1,6 +1,5 @@
 import express from "express";
 import mongoose from "mongoose";
-import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
@@ -19,7 +18,24 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(cors({ origin: "*", credentials: true }));
+
+/* ══════ BULLETPROOF CORS FIX (No wildcard *) ══════ */
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin); // Jo domain aaye, usko direct allow kardo
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  // Browser jab check karne ke liye OPTIONS request bhejta hai, use sidha OK bhej do
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan("dev"));
@@ -148,8 +164,10 @@ app.use((err, _req, res, _next) => {
 /* ══════ START SERVER ══════ */
 const start = async () => {
   try {
-    if (!process.env.MONGO_URI) throw new Error("MONGO_URI missing in .env");
-    await mongoose.connect(process.env.MONGO_URI);
+    const dbUrl = process.env.MONGO_URI || process.env.MONGODB_URI;
+    if (!dbUrl) throw new Error("MONGO_URI missing in .env");
+    
+    await mongoose.connect(dbUrl);
     console.log("✅ MongoDB connected");
     app.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
   } catch (err) {
