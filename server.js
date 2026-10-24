@@ -7,8 +7,11 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 
-// Models
-import { Blog } from "./models/index.js";
+/* ══════ IMPORTS (src folder ke andar se) ══════ */
+import { Blog } from "./src/models/index.js"; 
+import authRoutes from "./src/routes/auth.js";
+import cmsRoutes from "./src/routes/cms.js";
+import uploadRoutes from "./src/routes/upload.js";
 
 dotenv.config();
 
@@ -27,7 +30,7 @@ app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 app.get("/", (_req, res) => res.json({ success: true, message: "Zentrox API running 🚀" }));
 app.get("/api/health", (_req, res) => res.json({ success: true, db: mongoose.connection.readyState === 1 ? "connected" : "disconnected" }));
 
-/* ══════ BLOG ROUTES (Directly in server.js) ══════ */
+/* ══════ BLOG ROUTES (Inline) ══════ */
 const protectAdmin = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -127,11 +130,7 @@ app.get("/api/blog/:slug", async (req, res) => {
   }
 });
 
-/* ══════ OTHER ROUTES (Auth, CMS, Upload) ══════ */
-import authRoutes from "./routes/auth.js";
-import cmsRoutes from "./routes/cms.js";
-import uploadRoutes from "./routes/upload.js";
-
+/* ══════ OTHER ROUTES ══════ */
 app.use("/api/auth", authRoutes);
 app.use("/api/cms", cmsRoutes);
 app.use("/api/upload", uploadRoutes);
