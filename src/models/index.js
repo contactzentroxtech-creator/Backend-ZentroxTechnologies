@@ -104,30 +104,49 @@ const leadSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   BLOG MODEL
+   BLOG MODEL — ⭐ FIXED (frontend ke saath match)
 ═══════════════════════════════════════════════════════════════ */
 const blogSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },
-    slug: { type: String, unique: true, required: true },
-    excerpt: String,
+    title: { type: String, required: true, trim: true },
+    slug: { type: String, required: true, unique: true, lowercase: true },
+    excerpt: { type: String, default: "" },
     content: { type: String, required: true },
-    thumbnail: String,
-    image: String,
-    author: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    authorName: { type: String, default: "Zentrox Technologies" },
-    category: { type: String, default: "Blog" },
-    tags: [String],
-    isPublished: { type: Boolean, default: true },
-    publishedAt: { type: Date, default: Date.now },
-    viewCount: { type: Number, default: 0 },
+
+    // ⭐ Cover image — frontend `coverImage` use karta hai
+    coverImage: { type: String, default: "" },
+    coverImagePublicId: { type: String, default: "" },
+
+    category: { type: String, default: "General" },
+    tags: [{ type: String }],
+    author: { type: String, default: "Zentrox Team" },
     readTime: { type: Number, default: 5 },
-    metaTitle: String,
-    metaDesc: String,
+
+    // ⭐ `published` — frontend isi se filter karta hai
+    published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
+
+    // ⭐ `views` — frontend ise padhta hai
+    views: { type: Number, default: 0 },
+
+    metaTitle: { type: String, default: "" },
+    metaDescription: { type: String, default: "" },
   },
   { timestamps: true }
 );
+
+blogSchema.pre("validate", function (next) {
+  if (!this.slug && this.title) {
+    this.slug = this.title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+  next();
+});
 
 /* ═══════════════════════════════════════════════════════════════
    PORTFOLIO MODEL
@@ -259,7 +278,7 @@ const paymentSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   REFERRAL CODE MODEL (NEW)
+   REFERRAL CODE MODEL
 ═══════════════════════════════════════════════════════════════ */
 const referralCodeSchema = new mongoose.Schema(
   {
