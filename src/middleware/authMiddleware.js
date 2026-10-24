@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import { User } from "../models/index.js";
 
-// Token verify — logged-in user
 export const protect = async (req, res, next) => {
   try {
     let token;
@@ -25,7 +24,7 @@ export const protect = async (req, res, next) => {
   }
 };
 
-// Admin-only check
+// ⭐ Yeh function missing tha jiski wajah se blog load nahi ho raha tha
 export const adminOnly = (req, res, next) => {
   if (req.user?.role !== "admin") {
     return res.status(403).json({ success: false, message: "Admin access required" });
