@@ -1,5 +1,5 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 /* ═══════════════════════════════════════════════════════════════
    USER MODEL
@@ -17,11 +17,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6, select: false },
     phone: { type: String, trim: true },
     avatar: { type: String, default: "" },
-    role: {
-      type: String,
-      enum: ["user", "admin"],
-      default: "user",
-    },
+    role: { type: String, enum: ["user", "admin"], default: "user" },
     isActive: { type: Boolean, default: true },
     isEmailVerified: { type: Boolean, default: false },
     emailVerifyToken: { type: String, select: false },
@@ -70,11 +66,7 @@ const leadSchema = new mongoose.Schema(
       enum: ["new", "contacted", "qualified", "proposal", "won", "lost"],
       default: "new",
     },
-    priority: {
-      type: String,
-      enum: ["low", "medium", "high"],
-      default: "medium",
-    },
+    priority: { type: String, enum: ["low", "medium", "high"], default: "medium" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     notes: [
       {
@@ -112,23 +104,15 @@ const blogSchema = new mongoose.Schema(
     slug: { type: String, required: true, unique: true, lowercase: true },
     excerpt: { type: String, default: "" },
     content: { type: String, required: true },
-
-    // ⭐ Cover image — frontend `coverImage` use karta hai
     coverImage: { type: String, default: "" },
     coverImagePublicId: { type: String, default: "" },
-
     category: { type: String, default: "General" },
     tags: [{ type: String }],
     author: { type: String, default: "Zentrox Team" },
     readTime: { type: Number, default: 5 },
-
-    // ⭐ `published` — frontend isi se filter karta hai
     published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
-
-    // ⭐ `views` — frontend ise padhta hai
     views: { type: Number, default: 0 },
-
     metaTitle: { type: String, default: "" },
     metaDescription: { type: String, default: "" },
   },
@@ -189,7 +173,7 @@ const reviewSchema = new mongoose.Schema(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   CMS / SITE SETTINGS
+   SITE SETTINGS / CMS
 ═══════════════════════════════════════════════════════════════ */
 const siteSettingsSchema = new mongoose.Schema(
   {
@@ -282,13 +266,7 @@ const paymentSchema = new mongoose.Schema(
 ═══════════════════════════════════════════════════════════════ */
 const referralCodeSchema = new mongoose.Schema(
   {
-    code: {
-      type: String,
-      required: true,
-      unique: true,
-      uppercase: true,
-      trim: true,
-    },
+    code: { type: String, required: true, unique: true, uppercase: true, trim: true },
     ownerName: { type: String, required: true, trim: true },
     ownerPhone: { type: String, trim: true },
     ownerEmail: { type: String, trim: true, lowercase: true },
@@ -329,20 +307,39 @@ referralCodeSchema.methods.isValid = function () {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   EXPORTS
+   EXPORTS (named — server ke hisaab se)
 ═══════════════════════════════════════════════════════════════ */
-const User = mongoose.model("User", userSchema);
-const Lead = mongoose.model("Lead", leadSchema);
-const Blog = mongoose.model("Blog", blogSchema);
-const Portfolio = mongoose.model("Portfolio", portfolioSchema);
-const Review = mongoose.model("Review", reviewSchema);
-const SiteSetting = mongoose.model("SiteSetting", siteSettingsSchema);
-const Popup = mongoose.model("Popup", popupSchema);
-const Analytics = mongoose.model("Analytics", analyticsSchema);
-const Payment = mongoose.model("Payment", paymentSchema);
-const ReferralCode = mongoose.model("ReferralCode", referralCodeSchema);
+const User = mongoose.models.User || mongoose.model("User", userSchema);
+const Lead = mongoose.models.Lead || mongoose.model("Lead", leadSchema);
+const Blog = mongoose.models.Blog || mongoose.model("Blog", blogSchema);
+const Portfolio =
+  mongoose.models.Portfolio || mongoose.model("Portfolio", portfolioSchema);
+const Review = mongoose.models.Review || mongoose.model("Review", reviewSchema);
+const SiteSetting =
+  mongoose.models.SiteSetting || mongoose.model("SiteSetting", siteSettingsSchema);
+const Popup = mongoose.models.Popup || mongoose.model("Popup", popupSchema);
+const Analytics =
+  mongoose.models.Analytics || mongoose.model("Analytics", analyticsSchema);
+const Payment =
+  mongoose.models.Payment || mongoose.model("Payment", paymentSchema);
+const ReferralCode =
+  mongoose.models.ReferralCode || mongoose.model("ReferralCode", referralCodeSchema);
 
-module.exports = {
+export {
+  User,
+  Lead,
+  Blog,
+  Portfolio,
+  Review,
+  SiteSetting,
+  Popup,
+  Analytics,
+  Payment,
+  ReferralCode,
+};
+
+// Default export bhi de do — compatibility ke liye
+export default {
   User,
   Lead,
   Blog,
