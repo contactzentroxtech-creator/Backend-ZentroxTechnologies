@@ -7,10 +7,13 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 
 /* ───────── ROUTES ───────── */
-import authRoutes from "./routes/authRoutes.js";
-import blogRoutes from "./routes/blogRoutes.js";
-import cmsRoutes from "./routes/cmsRoutes.js";
-import uploadRoutes from "./routes/uploadRoutes.js";
+// ⭐ Imports fixed based on your actual file names
+import authRoutes from "./routes/auth.js";
+import blogRoutes from "./routes/blog.js";
+import cmsRoutes from "./routes/cms.js";
+import uploadRoutes from "./routes/upload.js";
+
+// Optional routes (agar tumhare paas nahi hain toh inhe comment out kar dena)
 import contactRoutes from "./routes/contactRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
@@ -103,14 +106,16 @@ app.use("/api/auth", authRoutes);
 app.use("/api/blog", blogRoutes);           // ⭐ Blog routes
 app.use("/api/cms", cmsRoutes);             // Hero image, settings
 app.use("/api/upload", uploadRoutes);       // Cloudinary upload
-app.use("/api/contact", contactRoutes);
-app.use("/api/services", serviceRoutes);
-app.use("/api/projects", projectRoutes);
-app.use("/api/testimonials", testimonialRoutes);
-app.use("/api/team", teamRoutes);
-app.use("/api/careers", careerRoutes);
-app.use("/api/quote", quoteRoutes);
-app.use("/api/newsletter", newsletterRoutes);
+
+// Uncomment these if you have these files:
+// app.use("/api/contact", contactRoutes);
+// app.use("/api/services", serviceRoutes);
+// app.use("/api/projects", projectRoutes);
+// app.use("/api/testimonials", testimonialRoutes);
+// app.use("/api/team", teamRoutes);
+// app.use("/api/careers", careerRoutes);
+// app.use("/api/quote", quoteRoutes);
+// app.use("/api/newsletter", newsletterRoutes);
 
 /* ═══════════════════════════════════════════
    4. 404 HANDLER
