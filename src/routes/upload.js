@@ -6,7 +6,7 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const jwt = require("jsonwebtoken");
 
 /* ═══════════════════════════════════════════════════════════════
-   INLINE AUTH — No middleware dependency
+   INLINE AUTH
 ═══════════════════════════════════════════════════════════════ */
 const protect = (req, res, next) => {
   try {
@@ -79,6 +79,7 @@ let mediaStore = [];
 
 /* ═══════════════════════════════════════════════════════════════
    POST /api/upload
+   Response: { success: true, data: { url, publicId, ... } }
 ═══════════════════════════════════════════════════════════════ */
 router.post(
   "/",
@@ -94,8 +95,8 @@ router.post(
       }
 
       const item = {
-        url: req.file.path,
-        publicId: req.file.filename,
+        url: req.file.path, // ⭐ Cloudinary URL
+        publicId: req.file.filename, // ⭐ Cloudinary public_id
         originalName: req.file.originalname,
         size: req.file.size,
         format: req.file.format || req.file.mimetype?.split("/")[1] || "jpg",
@@ -120,7 +121,7 @@ router.post(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   GET /api/upload
+   GET /api/upload — Media library
 ═══════════════════════════════════════════════════════════════ */
 router.get("/", protect, authorize("admin"), (req, res) => {
   res.json({ success: true, data: mediaStore });
