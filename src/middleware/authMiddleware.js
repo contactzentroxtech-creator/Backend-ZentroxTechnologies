@@ -24,7 +24,6 @@ export const protect = async (req, res, next) => {
   }
 };
 
-// ⭐ Yeh function missing tha jiski wajah se blog load nahi ho raha tha
 export const adminOnly = (req, res, next) => {
   if (req.user?.role !== "admin") {
     return res.status(403).json({ success: false, message: "Admin access required" });
