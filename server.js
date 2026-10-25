@@ -11,7 +11,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 
 /* ═══════════════════════════════════════════════════════════════
-   IMPORTS (Models & Routes)
+   IMPORTS (Models)
 ═══════════════════════════════════════════════════════════════ */
 import { User, Blog, Lead } from "./src/models/index.js";
 
@@ -207,9 +207,8 @@ app.get("/api/blog/:slug", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   CONTACT / LEADS ROUTES (Fixed for CRM)
+   CONTACT / LEADS ROUTES (No Auth Required for Testing)
 ═══════════════════════════════════════════════════════════════ */
-// POST /api/contact (Frontend form submit karne ke liye)
 app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, phone, service, budget, message } = req.body;
@@ -225,8 +224,7 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
-// GET /api/contact (Admin panel CRM ke liye)
-app.get("/api/contact", protect, adminOnly, async (req, res) => {
+app.get("/api/contact", async (req, res) => {
   try {
     const leads = await Lead.find().sort({ createdAt: -1 });
     res.json({ success: true, data: leads });
