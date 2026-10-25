@@ -207,24 +207,43 @@ app.get("/api/blog/:slug", async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   CONTACT / LEADS ROUTES (No Auth Required for Testing)
+   CONTACT / LEADS ROUTES (Fixed for Frontend 404)
 ═══════════════════════════════════════════════════════════════ */
+// 1. Frontend jab /api/contact par bhejta hai
 app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, phone, service, budget, message } = req.body;
-    if (!name || !phone) {
-      return res.status(400).json({ success: false, message: "Name and Phone are required" });
-    }
-    const lead = await Lead.create({
-      name, email, phone, service, budget, message, source: "website", status: "new",
-    });
+    if (!name || !phone) return res.status(400).json({ success: false, message: "Name and Phone required" });
+    const lead = await Lead.create({ name, email, phone, service, budget, message, source: "website", status: "new" });
     res.status(201).json({ success: true, data: lead, message: "Message sent successfully!" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+// 2. Frontend jab /api/leads par bhejta hai (jo tumhare network tab me dikha)
+app.post("/api/leads", async (req, res) => {
+  try {
+    const { name, email, phone, service, budget, message } = req.body;
+    if (!name || !phone) return res.status(400).json({ success: false, message: "Name and Phone required" });
+    const lead = await Lead.create({ name, email, phone, service, budget, message, source: "website", status: "new" });
+    res.status(201).json({ success: true, data: lead, message: "Lead captured!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Admin Panel jab leads fetch karta hai
 app.get("/api/contact", async (req, res) => {
+  try {
+    const leads = await Lead.find().sort({ createdAt: -1 });
+    res.json({ success: true, data: leads });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/leads", async (req, res) => {
   try {
     const leads = await Lead.find().sort({ createdAt: -1 });
     res.json({ success: true, data: leads });
