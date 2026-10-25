@@ -19,11 +19,33 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-userSchema.methods.matchPassword = async function (entered) {
+userSchema.methods.comparePassword = async function (entered) {
   return bcrypt.compare(entered, this.password);
 };
 
 export const User = mongoose.models.User || mongoose.model("User", userSchema);
+
+/* ═══════════ LEAD MODEL ═══════════ */
+const leadSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String },
+    phone: { type: String, required: true },
+    service: String,
+    budget: String,
+    message: String,
+    source: { type: String, default: "website" },
+    status: {
+      type: String,
+      enum: ["new", "contacted", "qualified", "proposal", "won", "lost"],
+      default: "new",
+    },
+    priority: { type: String, enum: ["low", "medium", "high"], default: "medium" },
+  },
+  { timestamps: true }
+);
+
+export const Lead = mongoose.models.Lead || mongoose.model("Lead", leadSchema);
 
 /* ═══════════ BLOG MODEL ═══════════ */
 const blogSchema = new mongoose.Schema(
@@ -55,24 +77,3 @@ blogSchema.pre("validate", function (next) {
 });
 
 export const Blog = mongoose.models.Blog || mongoose.model("Blog", blogSchema);
-
-/* ═══════════ CMS MODEL ═══════════ */
-const cmsSchema = new mongoose.Schema(
-  {
-    hero_image: { type: String, default: "" },
-    hero_title: { type: String, default: "Build Better, Grow Faster" },
-    hero_subtitle: { type: String, default: "" },
-    site_name: { type: String, default: "Zentrox Technologies" },
-    contact_email: { type: String, default: "" },
-    contact_phone: { type: String, default: "" },
-    social_links: {
-      facebook: String,
-      instagram: String,
-      linkedin: String,
-      twitter: String,
-    },
-  },
-  { timestamps: true }
-);
-
-export const CMS = mongoose.models.CMS || mongoose.model("CMS", cmsSchema);
